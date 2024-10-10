@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2024, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2020-2024, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -15,7 +15,7 @@ namespace Web::Layout {
 
 class InlineFormattingContext final : public FormattingContext {
 public:
-    InlineFormattingContext(LayoutState&, BlockContainer const& containing_block, LayoutState::UsedValues& containing_block_used_values, BlockFormattingContext& parent);
+    InlineFormattingContext(LayoutState&, LayoutMode, BlockContainer const& containing_block, LayoutState::UsedValues& containing_block_used_values, BlockFormattingContext& parent);
     ~InlineFormattingContext();
 
     BlockFormattingContext& parent();
@@ -23,9 +23,10 @@ public:
 
     BlockContainer const& containing_block() const { return static_cast<BlockContainer const&>(context_box()); }
 
-    virtual void run(Box const&, LayoutMode, AvailableSpace const&) override;
+    virtual void run(AvailableSpace const&) override;
     virtual CSSPixels automatic_content_height() const override;
     virtual CSSPixels automatic_content_width() const override;
+    StaticPositionRect calculate_static_position_rect(Box const&) const;
 
     void dimension_box_on_line(Box const&, LayoutMode);
 
@@ -38,7 +39,7 @@ public:
     void set_vertical_float_clearance(CSSPixels);
 
 private:
-    void generate_line_boxes(LayoutMode);
+    void generate_line_boxes();
     void apply_justification_to_fragments(CSS::TextJustify, LineBox&, bool is_last_line);
 
     LayoutState::UsedValues& m_containing_block_used_values;

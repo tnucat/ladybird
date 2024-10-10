@@ -12,21 +12,21 @@ namespace Web::Painting {
 Optional<int> ClippableAndScrollable::own_scroll_frame_id() const
 {
     if (m_own_scroll_frame)
-        return m_own_scroll_frame->id;
+        return m_own_scroll_frame->id();
     return {};
 }
 
 Optional<int> ClippableAndScrollable::scroll_frame_id() const
 {
     if (m_enclosing_scroll_frame)
-        return m_enclosing_scroll_frame->id;
+        return m_enclosing_scroll_frame->id();
     return {};
 }
 
 CSSPixelPoint ClippableAndScrollable::cumulative_offset_of_enclosing_scroll_frame() const
 {
     if (m_enclosing_scroll_frame)
-        return m_enclosing_scroll_frame->cumulative_offset;
+        return m_enclosing_scroll_frame->cumulative_offset();
     return {};
 }
 
@@ -51,7 +51,7 @@ void ClippableAndScrollable::apply_clip(PaintContext& context) const
     for (auto const& clip_rect : clip_rects) {
         Optional<i32> clip_scroll_frame_id;
         if (clip_rect.enclosing_scroll_frame)
-            clip_scroll_frame_id = clip_rect.enclosing_scroll_frame->id;
+            clip_scroll_frame_id = clip_rect.enclosing_scroll_frame->id();
         display_list_recorder.set_scroll_frame_id(clip_scroll_frame_id);
         auto rect = context.rounded_device_rect(clip_rect.rect).to_type<int>();
         auto corner_radii = clip_rect.corner_radii.as_corners(context);

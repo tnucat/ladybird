@@ -5,21 +5,25 @@
  */
 
 #include <AK/Base64.h>
+#include <AK/Enumerate.h>
 #include <AK/JsonArray.h>
 #include <AK/JsonObject.h>
 #include <AK/LexicalPath.h>
+#include <AK/SourceGenerator.h>
 #include <AK/StringBuilder.h>
 #include <LibCore/Directory.h>
 #include <LibCore/File.h>
 #include <LibCore/Resource.h>
-#include <LibCore/StandardPaths.h>
 #include <LibJS/MarkupGenerator.h>
 #include <LibWeb/Infra/Strings.h>
+#include <LibWebView/Application.h>
+#include <LibWebView/CookieJar.h>
 #include <LibWebView/InspectorClient.h>
 #include <LibWebView/SourceHighlighter.h>
 
 namespace WebView {
 
+static constexpr auto INSPECTOR_HTML = "resource://ladybird/inspector.html"sv;
 static constexpr auto INSPECTOR_CSS = "resource://ladybird/inspector.css"sv;
 static constexpr auto INSPECTOR_JS = "resource://ladybird/inspector.js"sv;
 
@@ -30,6 +34,14 @@ static ErrorOr<JsonValue> parse_json_tree(StringView json)
         return Error::from_string_literal("Expected tree to be a JSON object");
 
     return parsed_tree;
+}
+
+static String style_sheet_identifier_to_json(Web::CSS::StyleSheetIdentifier const& identifier)
+{
+    return MUST(String::formatted("{{ type: '{}', domNodeId: {}, url: '{}' }}"sv,
+        Web::CSS::style_sheet_identifier_type_to_string(identifier.type),
+        identifier.dom_element_unique_id.map([](auto& it) { return MUST(String::number(it)); }).value_or("undefined"_string),
+        identifier.url.value_or("undefined"_string)));
 }
 
 InspectorClient::InspectorClient(ViewImplementation& content_web_view, ViewImplementation& inspector_web_view)
@@ -103,6 +115,25 @@ InspectorClient::InspectorClient(ViewImplementation& content_web_view, ViewImple
 
     m_content_web_view.on_received_hovered_node_id = [this](auto node_id) {
         select_node(node_id);
+    };
+
+    m_content_web_view.on_received_style_sheet_list = [this](auto const& style_sheets) {
+        StringBuilder builder;
+        builder.append("inspector.setStyleSheets(["sv);
+        for (auto& style_sheet : style_sheets) {
+            builder.appendff("{}, "sv, style_sheet_identifier_to_json(style_sheet));
+        }
+        builder.append("]);"sv);
+
+        m_inspector_web_view.run_javascript(builder.string_view());
+    };
+
+    m_content_web_view.on_received_style_sheet_source = [this](Web::CSS::StyleSheetIdentifier const& identifier, String const& source) {
+        auto html = highlight_source(identifier.url.value_or({}), source, Syntax::Language::CSS, HighlightOutputMode::SourceOnly);
+        auto script = MUST(String::formatted("inspector.setStyleSheetSource({}, \"{}\");",
+            style_sheet_identifier_to_json(identifier),
+            MUST(encode_base64(html.bytes()))));
+        m_inspector_web_view.run_javascript(script);
     };
 
     m_content_web_view.on_finshed_editing_dom_node = [this](auto const& node_id) {
@@ -181,6 +212,20 @@ InspectorClient::InspectorClient(ViewImplementation& content_web_view, ViewImple
         m_content_web_view.replace_dom_node_attribute(node_id, attribute.name, replacement_attributes);
     };
 
+    m_inspector_web_view.on_inspector_requested_cookie_context_menu = [this](auto cookie_index, auto position) {
+        if (cookie_index >= m_cookies.size())
+            return;
+
+        m_cookie_context_menu_index = cookie_index;
+
+        if (on_requested_cookie_context_menu)
+            on_requested_cookie_context_menu(position, m_cookies[cookie_index]);
+    };
+
+    m_inspector_web_view.on_inspector_requested_style_sheet_source = [this](auto const& identifier) {
+        m_content_web_view.request_style_sheet_source(identifier);
+    };
+
     m_inspector_web_view.on_inspector_executed_console_script = [this](auto const& script) {
         append_console_source(script);
 
@@ -188,9 +233,16 @@ InspectorClient::InspectorClient(ViewImplementation& content_web_view, ViewImple
     };
 
     m_inspector_web_view.on_inspector_exported_inspector_html = [this](String const& html) {
-        auto inspector_path = LexicalPath::join(Core::StandardPaths::downloads_directory(), "inspector"sv);
+        auto maybe_inspector_path = Application::the().path_for_downloaded_file("inspector"sv);
 
-        if (auto result = Core::Directory::create(inspector_path, Core::Directory::CreateDirectories::Yes); result.is_error()) {
+        if (maybe_inspector_path.is_error()) {
+            append_console_warning(MUST(String::formatted("Unable to select a download location: {}", maybe_inspector_path.error())));
+            return;
+        }
+
+        auto inspector_path = maybe_inspector_path.release_value();
+
+        if (auto result = Core::Directory::create(inspector_path.string(), Core::Directory::CreateDirectories::Yes); result.is_error()) {
             append_console_warning(MUST(String::formatted("Unable to create {}: {}", inspector_path, result.error())));
             return;
         }
@@ -241,6 +293,8 @@ InspectorClient::~InspectorClient()
     m_content_web_view.on_received_dom_node_properties = nullptr;
     m_content_web_view.on_received_dom_tree = nullptr;
     m_content_web_view.on_received_hovered_node_id = nullptr;
+    m_content_web_view.on_received_style_sheet_list = nullptr;
+    m_content_web_view.on_inspector_requested_style_sheet_source = nullptr;
 }
 
 void InspectorClient::inspect()
@@ -250,6 +304,8 @@ void InspectorClient::inspect()
 
     m_content_web_view.inspect_dom_tree();
     m_content_web_view.inspect_accessibility_tree();
+    m_content_web_view.list_style_sheets();
+    load_cookies();
 }
 
 void InspectorClient::reset()
@@ -296,6 +352,34 @@ void InspectorClient::select_node(i32 node_id)
 
     auto script = MUST(String::formatted("inspector.inspectDOMNodeID({});", node_id));
     m_inspector_web_view.run_javascript(script);
+}
+
+void InspectorClient::load_cookies()
+{
+    m_cookies = Application::cookie_jar().get_all_cookies(m_content_web_view.url());
+    JsonArray json_cookies;
+
+    for (auto const& [index, cookie] : enumerate(m_cookies)) {
+        JsonObject json_cookie;
+
+        json_cookie.set("index"sv, JsonValue { index });
+        json_cookie.set("name"sv, JsonValue { cookie.name });
+        json_cookie.set("value"sv, JsonValue { cookie.value });
+        json_cookie.set("domain"sv, JsonValue { cookie.domain });
+        json_cookie.set("path"sv, JsonValue { cookie.path });
+        json_cookie.set("creationTime"sv, JsonValue { cookie.creation_time.milliseconds_since_epoch() });
+        json_cookie.set("lastAccessTime"sv, JsonValue { cookie.last_access_time.milliseconds_since_epoch() });
+        json_cookie.set("expiryTime"sv, JsonValue { cookie.expiry_time.milliseconds_since_epoch() });
+
+        MUST(json_cookies.append(move(json_cookie)));
+    }
+
+    StringBuilder builder;
+    builder.append("inspector.setCookies("sv);
+    json_cookies.serialize(builder);
+    builder.append(");"sv);
+
+    m_inspector_web_view.run_javascript(builder.string_view());
 }
 
 void InspectorClient::context_menu_edit_dom_node()
@@ -393,75 +477,39 @@ void InspectorClient::context_menu_copy_dom_node_attribute_value()
     m_context_menu_data.clear();
 }
 
+void InspectorClient::context_menu_delete_cookie()
+{
+    VERIFY(m_cookie_context_menu_index.has_value());
+    VERIFY(*m_cookie_context_menu_index < m_cookies.size());
+
+    auto& cookie = m_cookies[*m_cookie_context_menu_index];
+    cookie.expiry_time = UnixDateTime::earliest();
+
+    Application::cookie_jar().update_cookie(move(cookie));
+    load_cookies();
+
+    m_cookie_context_menu_index.clear();
+}
+
+void InspectorClient::context_menu_delete_all_cookies()
+{
+    for (auto& cookie : m_cookies) {
+        cookie.expiry_time = UnixDateTime::earliest();
+
+        Application::cookie_jar().update_cookie(move(cookie));
+    }
+
+    load_cookies();
+
+    m_cookie_context_menu_index.clear();
+}
+
 void InspectorClient::load_inspector()
 {
-    StringBuilder builder;
-
-    builder.append(R"~~~(
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name="color-scheme" content="dark light">
-    <title>Inspector</title>
-    <style type="text/css">
-)~~~"sv);
-
-    builder.append(HTML_HIGHLIGHTER_STYLE);
-
-    builder.appendff(R"~~~(
-    </style>
-    <link href="{}" rel="stylesheet" />
-</head>
-<body>
-    <div class="split-view">
-        <div id="inspector-top" class="split-view-container" style="height: 60%">
-            <div class="tab-controls-container">
-                <div class="global-controls"></div>
-                <div class="tab-controls">
-                    <button id="dom-tree-button" onclick="selectTopTab(this, 'dom-tree')">DOM Tree</button>
-                    <button id="accessibility-tree-button" onclick="selectTopTab(this, 'accessibility-tree')">Accessibility Tree</button>
-                </div>
-                <div class="global-controls">
-                    <button id="export-inspector-button" title="Export the Inspector to an HTML file" onclick="inspector.exportInspector()"></button>
-                </div>
-            </div>
-            <div id="dom-tree" class="tab-content html"></div>
-            <div id="accessibility-tree" class="tab-content"></div>
-        </div>
-        <div id="inspector-separator" class="split-view-separator">
-            <svg viewBox="0 0 16 5" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="2" cy="2.5" r="2" />
-                <circle cx="8" cy="2.5" r="2" />
-                <circle cx="14" cy="2.5" r="2" />
-            </svg>
-        </div>
-        <div id="inspector-bottom" class="split-view-container" style="height: calc(40% - 5px)">
-            <div class="tab-controls-container">
-                <div class="global-controls"></div>
-                <div class="tab-controls">
-                    <button id="console-button" onclick="selectBottomTab(this, 'console')">Console</button>
-                    <button id="computed-style-button" onclick="selectBottomTab(this, 'computed-style')">Computed Style</button>
-                    <button id="resolved-style-button" onclick="selectBottomTab(this, 'resolved-style')">Resolved Style</button>
-                    <button id="custom-properties-button" onclick="selectBottomTab(this, 'custom-properties')">Custom Properties</button>
-                    <button id="font-button" onclick="selectBottomTab(this, 'fonts')">Fonts</button>
-                </div>
-                <div class="global-controls"></div>
-            </div>
-            <div id="console" class="tab-content">
-                <div class="console">
-                    <div id="console-output" class="console-output"></div>
-                    <div class="console-input">
-                        <label for="console-input" class="console-prompt">&gt;&gt;</label>
-                        <input id="console-input" type="text" placeholder="Enter statement to execute">
-                        <button id="console-clear" title="Clear the console output" onclick="inspector.clearConsoleOutput()">X</button>
-                    </div>
-                </div>
-            </div>
-)~~~",
-        INSPECTOR_CSS);
+    auto inspector_html = MUST(Core::Resource::load_from_uri(INSPECTOR_HTML));
 
     auto generate_property_table = [&](auto name) {
-        builder.appendff(R"~~~(
+        return MUST(String::formatted(R"~~~(
             <div id="{0}" class="tab-content">
                 <table class="property-table">
                     <thead>
@@ -475,33 +523,21 @@ void InspectorClient::load_inspector()
                 </table>
             </div>
 )~~~",
-            name);
+            name));
     };
 
-    generate_property_table("computed-style"sv);
-    generate_property_table("resolved-style"sv);
-    generate_property_table("custom-properties"sv);
+    StringBuilder builder;
 
-    builder.append(R"~~~(
-        <div id="fonts" class="tab-content">
-            <div id="fonts-list">
-            </div>
-            <div id="fonts-details">
-            </div>
-        </div>
-)~~~"sv);
+    SourceGenerator generator { builder };
+    generator.set("INSPECTOR_CSS"sv, INSPECTOR_CSS);
+    generator.set("INSPECTOR_JS"sv, INSPECTOR_JS);
+    generator.set("INSPECTOR_STYLE"sv, HTML_HIGHLIGHTER_STYLE);
+    generator.set("COMPUTED_STYLE"sv, generate_property_table("computed-style"sv));
+    generator.set("RESOVLED_STYLE"sv, generate_property_table("resolved-style"sv));
+    generator.set("CUSTOM_PROPERTIES"sv, generate_property_table("custom-properties"sv));
+    generator.append(inspector_html->data());
 
-    builder.appendff(R"~~~(
-        </div>
-    </div>
-
-    <script type="text/javascript" src="{}"></script>
-</body>
-</html>
-)~~~",
-        INSPECTOR_JS);
-
-    m_inspector_web_view.load_html(builder.string_view());
+    m_inspector_web_view.load_html(generator.as_string_view());
 }
 
 template<typename Generator>

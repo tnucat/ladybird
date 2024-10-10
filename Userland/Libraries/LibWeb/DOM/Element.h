@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2024, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2024, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -439,6 +439,7 @@ private:
     void enqueue_an_element_on_the_appropriate_element_queue();
 
     Optional<Directionality> auto_directionality() const;
+    Optional<Directionality> contained_text_auto_directionality(bool can_exclude_root) const;
     Directionality parent_directionality() const;
     bool is_auto_directionality_form_associated_element() const;
 

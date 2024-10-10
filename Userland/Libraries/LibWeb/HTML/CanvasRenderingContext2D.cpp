@@ -24,6 +24,7 @@
 #include <LibWeb/Layout/TextNode.h>
 #include <LibWeb/Painting/Paintable.h>
 #include <LibWeb/Platform/FontPlugin.h>
+#include <LibWeb/SVG/SVGImageElement.h>
 #include <LibWeb/WebIDL/ExceptionOr.h>
 
 namespace Web::HTML {
@@ -174,7 +175,7 @@ void CanvasRenderingContext2D::did_draw(Gfx::FloatRect const&)
     // FIXME: Make use of the rect to reduce the invalidated area when possible.
     if (!canvas_element().paintable())
         return;
-    canvas_element().paintable()->set_needs_display();
+    canvas_element().paintable()->set_needs_display(InvalidateDisplayList::No);
 }
 
 Gfx::Painter* CanvasRenderingContext2D::painter()
@@ -350,18 +351,14 @@ WebIDL::ExceptionOr<JS::GCPtr<ImageData>> CanvasRenderingContext2D::get_image_da
     auto source_rect_intersected = source_rect.intersected(bitmap.rect());
 
     // 6. Set the pixel values of imageData to be the pixels of this's output bitmap in the area specified by the source rectangle in the bitmap's coordinate space units, converted from this's color space to imageData's colorSpace using 'relative-colorimetric' rendering intent.
-    // FIXME: Can't use a Gfx::DeprecatedPainter + blit() here as it doesn't support ImageData bitmap's RGBA8888 format.
     // NOTE: Internally we must use premultiplied alpha, but ImageData should hold unpremultiplied alpha. This conversion
     //       might result in a loss of precision, but is according to spec.
     //       See: https://html.spec.whatwg.org/multipage/canvas.html#premultiplied-alpha-and-the-2d-rendering-context
     ASSERT(bitmap.alpha_type() == Gfx::AlphaType::Premultiplied);
     ASSERT(image_data->bitmap().alpha_type() == Gfx::AlphaType::Unpremultiplied);
-    for (int target_y = 0; target_y < source_rect_intersected.height(); ++target_y) {
-        for (int target_x = 0; target_x < source_rect_intersected.width(); ++target_x) {
-            auto pixel = bitmap.get_pixel(target_x + x, target_y + y);
-            image_data->bitmap().set_pixel(target_x, target_y, pixel.to_unpremultiplied());
-        }
-    }
+
+    auto painter = Gfx::Painter::create(image_data->bitmap());
+    painter->draw_bitmap(image_data->bitmap().rect().to_type<float>(), bitmap, source_rect_intersected, Gfx::ScalingMode::NearestNeighbor, drawing_state().global_alpha);
 
     // 7. Set the pixels values of imageData for areas of the source rectangle that are outside of the output bitmap to transparent black.
     // NOTE: No-op, already done during creation.
@@ -385,8 +382,9 @@ void CanvasRenderingContext2D::reset_to_default_state()
     auto* bitmap = canvas_element().bitmap();
 
     // 1. Clear canvas's bitmap to transparent black.
-    if (bitmap)
-        bitmap->fill(Gfx::Color::Transparent);
+    if (bitmap) {
+        painter()->clear_rect(bitmap->rect().to_type<float>(), Color::Transparent);
+    }
 
     // 2. Empty the list of subpaths in context's current default path.
     path().clear();
@@ -492,7 +490,6 @@ CanvasRenderingContext2D::PreparedText CanvasRenderingContext2D::prepare_text(By
     // ...and with all other properties set to their initial values.
     // FIXME: Actually use a LineBox here instead of, you know, using the default font and measuring its size (which is not the spec at all).
     // FIXME: Once we have CanvasTextDrawingStyles, add the CSS attributes.
-    size_t width = font->width(text.view());
     size_t height = font->pixel_size();
 
     // 6. If maxWidth was provided and the hypothetical width of the inline box in the hypothetical line box is greater than maxWidth CSS pixels, then change font to have a more condensed font (if one is available or if a reasonably readable one can be synthesized by applying a horizontal scale factor to the font) or a smaller font, and return to the previous step.
@@ -511,26 +508,13 @@ CanvasRenderingContext2D::PreparedText CanvasRenderingContext2D::prepare_text(By
     //   7.8. If textBaseline is ideographic: Let the anchor point's vertical position be the ideographic-under baseline of the first available font of the inline box.
     //   7.9. If textBaseline is bottom: Let the anchor point's vertical position be the bottom of the em box of the first available font of the inline box.
     // FIXME: Once we have CanvasTextDrawingStyles, handle the alignment and baseline.
-    [[maybe_unused]] Gfx::IntPoint anchor { 0, 0 };
+    Gfx::FloatPoint anchor { 0, 0 };
     auto physical_alignment = Gfx::TextAlignment::CenterLeft;
 
+    auto glyph_run = Gfx::shape_text(anchor, replaced_text.code_points(), *font, Gfx::GlyphRun::TextType::Ltr);
+
     // 8. Let result be an array constructed by iterating over each glyph in the inline box from left to right (if any), adding to the array, for each glyph, the shape of the glyph as it is in the inline box, positioned on a coordinate space using CSS pixels with its origin is at the anchor point.
-    PreparedText prepared_text { {}, physical_alignment, { 0, 0, static_cast<int>(width), static_cast<int>(height) } };
-    prepared_text.glyphs.ensure_capacity(replaced_text.bytes_as_string_view().length());
-
-    auto segmenter = Unicode::Segmenter::create(Unicode::SegmenterGranularity::Grapheme);
-
-    size_t previous_boundary = 0;
-    segmenter->for_each_boundary(replaced_text, [&](auto boundary) {
-        if (boundary == 0)
-            return IterationDecision::Continue;
-
-        auto glyph = MUST(replaced_text.substring_from_byte_offset(previous_boundary, boundary - previous_boundary));
-        prepared_text.glyphs.append({ move(glyph), { static_cast<int>(boundary), 0 } });
-
-        previous_boundary = boundary;
-        return IterationDecision::Continue;
-    });
+    PreparedText prepared_text { glyph_run, physical_alignment, { 0, 0, static_cast<int>(glyph_run->width()), static_cast<int>(height) } };
 
     // 9. Return result, physical alignment, and the inline box.
     return prepared_text;
@@ -556,6 +540,21 @@ void CanvasRenderingContext2D::clip(Path2D& path, StringView fill_rule)
     clip_internal(path.path(), parse_fill_rule(fill_rule));
 }
 
+static bool is_point_in_path_internal(Gfx::Path path, double x, double y, StringView fill_rule)
+{
+    return path.contains(Gfx::FloatPoint(x, y), parse_fill_rule(fill_rule));
+}
+
+bool CanvasRenderingContext2D::is_point_in_path(double x, double y, StringView fill_rule)
+{
+    return is_point_in_path_internal(path(), x, y, fill_rule);
+}
+
+bool CanvasRenderingContext2D::is_point_in_path(Path2D const& path, double x, double y, StringView fill_rule)
+{
+    return is_point_in_path_internal(path.path(), x, y, fill_rule);
+}
+
 // https://html.spec.whatwg.org/multipage/canvas.html#check-the-usability-of-the-image-argument
 WebIDL::ExceptionOr<CanvasImageSourceUsability> check_usability_of_image(CanvasImageSource const& image)
 {
@@ -574,9 +573,27 @@ WebIDL::ExceptionOr<CanvasImageSourceUsability> check_usability_of_image(CanvasI
                 return { CanvasImageSourceUsability::Bad };
             return Optional<CanvasImageSourceUsability> {};
         },
+        // FIXME: Don't duplicate this for HTMLImageElement and SVGImageElement.
+        [](JS::Handle<SVG::SVGImageElement> const& image_element) -> WebIDL::ExceptionOr<Optional<CanvasImageSourceUsability>> {
+            // FIXME: If image's current request's state is broken, then throw an "InvalidStateError" DOMException.
 
-        // FIXME: HTMLVideoElement
-        // If image's readyState attribute is either HAVE_NOTHING or HAVE_METADATA, then return bad.
+            // If image is not fully decodable, then return bad.
+            if (!image_element->bitmap())
+                return { CanvasImageSourceUsability::Bad };
+
+            // If image has an intrinsic width or intrinsic height (or both) equal to zero, then return bad.
+            if (image_element->bitmap()->width() == 0 || image_element->bitmap()->height() == 0)
+                return { CanvasImageSourceUsability::Bad };
+            return Optional<CanvasImageSourceUsability> {};
+        },
+
+        [](JS::Handle<HTML::HTMLVideoElement> const& video_element) -> WebIDL::ExceptionOr<Optional<CanvasImageSourceUsability>> {
+            // If image's readyState attribute is either HAVE_NOTHING or HAVE_METADATA, then return bad.
+            if (video_element->ready_state() == HTML::HTMLMediaElement::ReadyState::HaveNothing || video_element->ready_state() == HTML::HTMLMediaElement::ReadyState::HaveMetadata) {
+                return { CanvasImageSourceUsability::Bad };
+            }
+            return Optional<CanvasImageSourceUsability> {};
+        },
 
         // HTMLCanvasElement
         // FIXME: OffscreenCanvas
@@ -611,10 +628,14 @@ bool image_is_not_origin_clean(CanvasImageSource const& image)
             // FIXME: image's current request's image data is CORS-cross-origin.
             return false;
         },
-
-        // FIXME: HTMLVideoElement
-        // image's media data is CORS-cross-origin.
-
+        [](JS::Handle<SVG::SVGImageElement> const&) {
+            // FIXME: image's current request's image data is CORS-cross-origin.
+            return false;
+        },
+        [](JS::Handle<HTML::HTMLVideoElement> const&) {
+            // FIXME: image's media data is CORS-cross-origin.
+            return false;
+        },
         // HTMLCanvasElement
         [](OneOf<JS::Handle<HTMLCanvasElement>, JS::Handle<ImageBitmap>> auto const&) {
             // FIXME: image's bitmap's origin-clean flag is false.

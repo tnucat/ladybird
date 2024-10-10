@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2020, the SerenityOS developers.
- * Copyright (c) 2021-2022, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2021-2022, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2023, Bastiaan van der Plaat <bastiaan.v.d.plaat@gmail.com>
  *
  * SPDX-License-Identifier: BSD-2-Clause
@@ -25,6 +25,7 @@
 #include <LibWeb/Layout/Node.h>
 #include <LibWeb/Namespace.h>
 #include <LibWeb/Page/Page.h>
+#include <LibWeb/Painting/Paintable.h>
 
 namespace Web::HTML {
 
@@ -294,7 +295,6 @@ WebIDL::ExceptionOr<void> HTMLSelectElement::set_value(String const& value)
     for (auto const& option_element : list_of_options())
         option_element->set_selected(option_element->value() == value);
     update_inner_text_element();
-    queue_input_and_change_events();
     return {};
 }
 
@@ -323,7 +323,7 @@ void HTMLSelectElement::set_is_open(bool open)
         return;
 
     m_is_open = open;
-    invalidate_style();
+    invalidate_style(DOM::StyleInvalidationReason::HTMLSelectElementSetIsOpen);
 }
 
 bool HTMLSelectElement::has_activation_behavior() const
@@ -528,13 +528,16 @@ void HTMLSelectElement::create_shadow_tree_if_needed()
     MUST(border->append_child(*m_inner_text_element));
 
     // FIXME: Find better way to add chevron icon
+    auto chevron_fill_color = document().page().palette().base_text();
+    auto chevron_svg = MUST(String::formatted("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path fill=\"{}\" d=\"M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z\"/></svg>", chevron_fill_color));
+
     m_chevron_icon_element = DOM::create_element(document(), HTML::TagNames::div, Namespace::HTML).release_value_but_fixme_should_propagate_errors();
     MUST(m_chevron_icon_element->set_attribute(HTML::AttributeNames::style, R"~~~(
         width: 16px;
         height: 16px;
         margin-left: 4px;
     )~~~"_string));
-    MUST(m_chevron_icon_element->set_inner_html("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path d=\"M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z\" /></svg>"sv));
+    MUST(m_chevron_icon_element->set_inner_html(chevron_svg));
     MUST(border->append_child(*m_chevron_icon_element));
 
     update_inner_text_element();

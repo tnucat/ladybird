@@ -105,20 +105,13 @@ struct StackingContextTransform {
     Gfx::FloatMatrix4x4 matrix;
 };
 
-struct StackingContextMask {
-    NonnullRefPtr<Gfx::Bitmap> mask_bitmap;
-    Gfx::Bitmap::MaskKind mask_kind;
-};
-
 struct PushStackingContext {
     float opacity;
-    bool is_fixed_position;
     // The bounding box of the source paintable (pre-transform).
     Gfx::IntRect source_paintable_rect;
     // A translation to be applied after the stacking context has been transformed.
     Gfx::IntPoint post_transform_translation;
     StackingContextTransform transform;
-    Optional<StackingContextMask> mask = {};
     Optional<Gfx::Path> clip_path = {};
 
     void translate_by(Gfx::IntPoint const& offset)
@@ -388,6 +381,32 @@ struct PaintScrollBar {
     }
 };
 
+struct ApplyOpacity {
+    float opacity;
+};
+
+struct ApplyTransform {
+    Gfx::FloatPoint origin;
+    Gfx::FloatMatrix4x4 matrix;
+    Gfx::IntPoint post_transform_translation;
+
+    void translate_by(Gfx::IntPoint const& offset)
+    {
+        origin.translate_by(offset.to_type<float>());
+    }
+};
+
+struct ApplyMaskBitmap {
+    Gfx::IntPoint origin;
+    NonnullRefPtr<Gfx::Bitmap> bitmap;
+    Gfx::Bitmap::MaskKind kind;
+
+    void translate_by(Gfx::IntPoint const& offset)
+    {
+        origin.translate_by(offset);
+    }
+};
+
 using Command = Variant<
     DrawGlyphRun,
     FillRect,
@@ -419,6 +438,9 @@ using Command = Variant<
     AddRoundedRectClip,
     AddMask,
     PaintNestedDisplayList,
-    PaintScrollBar>;
+    PaintScrollBar,
+    ApplyOpacity,
+    ApplyTransform,
+    ApplyMaskBitmap>;
 
 }

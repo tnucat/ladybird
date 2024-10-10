@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2024, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2024, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2022-2023, San Atkins <atkinssj@serenityos.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
@@ -448,9 +448,11 @@ void Element::run_attribute_change_steps(FlyString const& local_name, Optional<S
 
     // AD-HOC: Run our own internal attribute change handler.
     attribute_changed(local_name, old_value, value);
-    invalidate_style_after_attribute_change(local_name);
 
-    document().bump_dom_tree_version();
+    if (old_value != value) {
+        invalidate_style_after_attribute_change(local_name);
+        document().bump_dom_tree_version();
+    }
 }
 
 void Element::attribute_changed(FlyString const& name, Optional<String> const&, Optional<String> const& value)
@@ -531,7 +533,6 @@ static CSS::RequiredInvalidationAfterStyleChange compute_required_invalidation(C
 
 CSS::RequiredInvalidationAfterStyleChange Element::recompute_style()
 {
-    set_needs_style_update(false);
     VERIFY(parent());
 
     auto& style_computer = document().style_computer();
@@ -824,7 +825,7 @@ WebIDL::ExceptionOr<void> Element::set_inner_html(StringView value)
 
         if (context->is_connected()) {
             // NOTE: Since the DOM has changed, we have to rebuild the layout tree.
-            context->document().invalidate_layout();
+            context->document().invalidate_layout_tree();
         }
     }
 
@@ -875,7 +876,7 @@ void Element::set_shadow_root(JS::GCPtr<ShadowRoot> shadow_root)
     m_shadow_root = move(shadow_root);
     if (m_shadow_root)
         m_shadow_root->set_host(this);
-    invalidate_style();
+    invalidate_style(StyleInvalidationReason::ElementSetShadowRoot);
 }
 
 CSS::CSSStyleDeclaration* Element::style_for_bindings()
@@ -974,7 +975,6 @@ JS::NonnullGCPtr<Geometry::DOMRectList> Element::get_client_rects() const
     //          or inline-table include both the table box and the caption box, if any, but not the anonymous container box.
     // FIXME: - Replace each anonymous block box with its child box(es) and repeat this until no anonymous block boxes
     //          are left in the final list.
-    auto viewport_offset = navigable->viewport_scroll_offset();
 
     // NOTE: Make sure CSS transforms are resolved before it is used to calculate the rect position.
     const_cast<Document&>(document()).update_paint_and_hit_testing_properties_if_needed();
@@ -988,21 +988,27 @@ JS::NonnullGCPtr<Geometry::DOMRectList> Element::get_client_rects() const
         transform = Gfx::extract_2d_affine_transform(paintable_box->transform());
         for (auto const* containing_block = paintable->containing_block(); !containing_block->is_viewport(); containing_block = containing_block->containing_block()) {
             transform = Gfx::extract_2d_affine_transform(containing_block->transform()).multiply(transform);
-            scroll_offset.translate_by(containing_block->scroll_offset());
+        }
+
+        if (auto enclosing_scroll_offset = paintable_box->enclosing_scroll_frame(); enclosing_scroll_offset) {
+            scroll_offset.translate_by(-enclosing_scroll_offset->cumulative_offset());
         }
 
         auto absolute_rect = paintable_box->absolute_border_box_rect();
         auto transformed_rect = transform.map(absolute_rect.translated(-paintable_box->transform_origin()).to_type<float>())
                                     .to_type<CSSPixels>()
                                     .translated(paintable_box->transform_origin())
-                                    .translated(-scroll_offset)
-                                    .translated(-viewport_offset);
+                                    .translated(-scroll_offset);
         rects.append(Geometry::DOMRect::create(realm(), transformed_rect.to_type<float>()));
     } else if (paintable && is<Painting::InlinePaintable>(*paintable)) {
         auto const& inline_paintable = static_cast<Painting::InlinePaintable const&>(*paintable);
+
+        if (auto enclosing_scroll_offset = inline_paintable.enclosing_scroll_frame(); enclosing_scroll_offset) {
+            scroll_offset.translate_by(-enclosing_scroll_offset->cumulative_offset());
+        }
+
         auto absolute_rect = inline_paintable.bounding_rect();
         absolute_rect.translate_by(-scroll_offset);
-        absolute_rect.translate_by(-viewport_offset);
         rects.append(Geometry::DOMRect::create(realm(), transform.map(absolute_rect.to_type<float>())));
     } else if (paintable) {
         dbgln("FIXME: Failed to get client rects for element ({})", debug_description());
@@ -1239,7 +1245,8 @@ double Element::scroll_top() const
         return 0.0;
 
     // 3. Let window be the value of document’s defaultView attribute.
-    auto* window = document.default_view();
+    // FIXME: The specification expects defaultView to be a Window object, but defaultView actually returns a WindowProxy object.
+    auto window = document.window();
 
     // 4. If window is null, return zero and terminate these steps.
     if (!window)
@@ -1249,12 +1256,12 @@ double Element::scroll_top() const
     if (document.document_element() == this && document.in_quirks_mode())
         return 0.0;
 
-    // NOTE: Ensure that layout is up-to-date before looking at metrics.
-    const_cast<Document&>(document).update_layout();
-
     // 6. If the element is the root element return the value of scrollY on window.
     if (document.document_element() == this)
         return window->scroll_y();
+
+    // NOTE: Ensure that layout is up-to-date before looking at metrics.
+    const_cast<Document&>(document).update_layout();
 
     // 7. If the element is the body element, document is in quirks mode, and the element is not potentially scrollable, return the value of scrollY on window.
     if (document.body() == this && document.in_quirks_mode() && !is_potentially_scrollable())
@@ -1269,6 +1276,7 @@ double Element::scroll_top() const
     return paintable_box()->scroll_offset().y().to_double();
 }
 
+// https://drafts.csswg.org/cssom-view/#dom-element-scrollleft
 double Element::scroll_left() const
 {
     // 1. Let document be the element’s node document.
@@ -1279,7 +1287,8 @@ double Element::scroll_left() const
         return 0.0;
 
     // 3. Let window be the value of document’s defaultView attribute.
-    auto* window = document.default_view();
+    // FIXME: The specification expects defaultView to be a Window object, but defaultView actually returns a WindowProxy object.
+    auto window = document.window();
 
     // 4. If window is null, return zero and terminate these steps.
     if (!window)
@@ -1289,12 +1298,12 @@ double Element::scroll_left() const
     if (document.document_element() == this && document.in_quirks_mode())
         return 0.0;
 
-    // NOTE: Ensure that layout is up-to-date before looking at metrics.
-    const_cast<Document&>(document).update_layout();
-
     // 6. If the element is the root element return the value of scrollX on window.
     if (document.document_element() == this)
         return window->scroll_x();
+
+    // NOTE: Ensure that layout is up-to-date before looking at metrics.
+    const_cast<Document&>(document).update_layout();
 
     // 7. If the element is the body element, document is in quirks mode, and the element is not potentially scrollable, return the value of scrollX on window.
     if (document.body() == this && document.in_quirks_mode() && !is_potentially_scrollable())
@@ -1325,7 +1334,8 @@ void Element::set_scroll_left(double x)
         return;
 
     // 5. Let window be the value of document’s defaultView attribute.
-    auto* window = document.default_view();
+    // FIXME: The specification expects defaultView to be a Window object, but defaultView actually returns a WindowProxy object.
+    auto window = document.window();
 
     // 6. If window is null, terminate these steps.
     if (!window)
@@ -1335,14 +1345,14 @@ void Element::set_scroll_left(double x)
     if (document.document_element() == this && document.in_quirks_mode())
         return;
 
-    // NOTE: Ensure that layout is up-to-date before looking at metrics or scrolling the page.
-    const_cast<Document&>(document).update_layout();
-
     // 8. If the element is the root element invoke scroll() on window with x as first argument and scrollY on window as second argument, and terminate these steps.
     if (document.document_element() == this) {
         window->scroll(x, window->scroll_y());
         return;
     }
+
+    // NOTE: Ensure that layout is up-to-date before looking at metrics or scrolling the page.
+    const_cast<Document&>(document).update_layout();
 
     // 9. If the element is the body element, document is in quirks mode, and the element is not potentially scrollable, invoke scroll() on window with x as first argument and scrollY on window as second argument, and terminate these steps.
     if (document.body() == this && document.in_quirks_mode() && !is_potentially_scrollable()) {
@@ -1381,7 +1391,8 @@ void Element::set_scroll_top(double y)
         return;
 
     // 5. Let window be the value of document’s defaultView attribute.
-    auto* window = document.default_view();
+    // FIXME: The specification expects defaultView to be a Window object, but defaultView actually returns a WindowProxy object.
+    auto window = document.window();
 
     // 6. If window is null, terminate these steps.
     if (!window)
@@ -1391,14 +1402,14 @@ void Element::set_scroll_top(double y)
     if (document.document_element() == this && document.in_quirks_mode())
         return;
 
-    // NOTE: Ensure that layout is up-to-date before looking at metrics or scrolling the page.
-    const_cast<Document&>(document).update_layout();
-
     // 8. If the element is the root element invoke scroll() on window with scrollX on window as first argument and y as second argument, and terminate these steps.
     if (document.document_element() == this) {
         window->scroll(window->scroll_x(), y);
         return;
     }
+
+    // NOTE: Ensure that layout is up-to-date before looking at metrics or scrolling the page.
+    const_cast<Document&>(document).update_layout();
 
     // 9. If the element is the body element, document is in quirks mode, and the element is not potentially scrollable, invoke scroll() on window with scrollX as first argument and y as second argument, and terminate these steps.
     if (document.body() == this && document.in_quirks_mode() && !is_potentially_scrollable()) {
@@ -1432,9 +1443,6 @@ int Element::scroll_width() const
     if (!document.is_active())
         return 0;
 
-    // NOTE: Ensure that layout is up-to-date before looking at metrics.
-    const_cast<Document&>(document).update_layout();
-
     // 3. Let viewport width be the width of the viewport excluding the width of the scroll bar, if any,
     //    or zero if there is no viewport.
     auto viewport_width = document.viewport_rect().width().to_int();
@@ -1444,6 +1452,9 @@ int Element::scroll_width() const
     //    return max(viewport scrolling area width, viewport width).
     if (document.document_element() == this && !document.in_quirks_mode())
         return max(viewport_scroll_width, viewport_width);
+
+    // NOTE: Ensure that layout is up-to-date before looking at metrics.
+    const_cast<Document&>(document).update_layout();
 
     // 5. If the element is the body element, document is in quirks mode and the element is not potentially scrollable,
     //    return max(viewport scrolling area width, viewport width).
@@ -1468,9 +1479,6 @@ int Element::scroll_height() const
     if (!document.is_active())
         return 0;
 
-    // NOTE: Ensure that layout is up-to-date before looking at metrics.
-    const_cast<Document&>(document).update_layout();
-
     // 3. Let viewport height be the height of the viewport excluding the height of the scroll bar, if any,
     //    or zero if there is no viewport.
     auto viewport_height = document.viewport_rect().height().to_int();
@@ -1480,6 +1488,9 @@ int Element::scroll_height() const
     //    return max(viewport scrolling area height, viewport height).
     if (document.document_element() == this && !document.in_quirks_mode())
         return max(viewport_scroll_height, viewport_height);
+
+    // NOTE: Ensure that layout is up-to-date before looking at metrics.
+    const_cast<Document&>(document).update_layout();
 
     // 5. If the element is the body element, document is in quirks mode and the element is not potentially scrollable,
     //    return max(viewport scrolling area height, viewport height).
@@ -1909,7 +1920,7 @@ ErrorOr<void> Element::scroll_into_view(Optional<Variant<bool, ScrollIntoViewOpt
     // 6. If the element does not have any associated box, or is not available to user-agent features, then return.
     document().update_layout();
     if (!layout_node())
-        return Error::from_string_view("Element has no associated box"sv);
+        return Error::from_string_literal("Element has no associated box");
 
     // 7. Scroll the element into view with behavior, block, and inline.
     TRY(scroll_an_element_into_view(*this, behavior, block, inline_));
@@ -1925,7 +1936,7 @@ void Element::invalidate_style_after_attribute_change(FlyString const& attribute
     (void)attribute_name;
 
     // FIXME: This will need to become smarter when we implement the :has() selector.
-    invalidate_style();
+    invalidate_style(StyleInvalidationReason::ElementAttributeChange);
 }
 
 // https://www.w3.org/TR/wai-aria-1.2/#tree_exclusion
@@ -2340,7 +2351,8 @@ void Element::scroll(double x, double y)
         return;
 
     // 5. Let window be the value of document’s defaultView attribute.
-    auto* window = document.default_view();
+    // FIXME: The specification expects defaultView to be a Window object, but defaultView actually returns a WindowProxy object.
+    auto window = document.window();
 
     // 6. If window is null, terminate these steps.
     if (!window)
@@ -2568,31 +2580,6 @@ bool Element::is_auto_directionality_form_associated_element() const
 // https://html.spec.whatwg.org/multipage/dom.html#auto-directionality
 Optional<Element::Directionality> Element::auto_directionality() const
 {
-    // https://html.spec.whatwg.org/multipage/dom.html#text-node-directionality
-    auto text_node_directionality = [](Text const& text_node) -> Optional<Directionality> {
-        // 1. If text's data does not contain a code point whose bidirectional character type is L, AL, or R, then return null.
-        // 2. Let codePoint be the first code point in text's data whose bidirectional character type is L, AL, or R.
-        Optional<Unicode::BidiClass> found_character_bidi_class;
-        for (auto code_point : Utf8View(text_node.data())) {
-            auto bidi_class = Unicode::bidirectional_class(code_point);
-            if (first_is_one_of(bidi_class, Unicode::BidiClass::LeftToRight, Unicode::BidiClass::RightToLeftArabic, Unicode::BidiClass::RightToLeft)) {
-                found_character_bidi_class = bidi_class;
-                break;
-            }
-        }
-        if (!found_character_bidi_class.has_value())
-            return {};
-
-        // 3. If codePoint is of bidirectional character type AL or R, then return 'rtl'.
-        if (first_is_one_of(*found_character_bidi_class, Unicode::BidiClass::RightToLeftArabic, Unicode::BidiClass::RightToLeft))
-            return Directionality::Rtl;
-
-        // 4. If codePoint is of bidirectional character type L, then return 'ltr'.
-        // NOTE: codePoint should always be of bidirectional character type L by this point, so we can just return 'ltr' here.
-        VERIFY(*found_character_bidi_class == Unicode::BidiClass::LeftToRight);
-        return Directionality::Ltr;
-    };
-
     // 1. If element is an auto-directionality form-associated element:
     if (is_auto_directionality_form_associated_element()) {
         auto const* form_associated_element = dynamic_cast<HTML::FormAssociatedElement const*>(this);
@@ -2628,15 +2615,15 @@ Optional<Element::Directionality> Element::auto_directionality() const
 
                 // 2. If child is a Text node, then set childDirection to the text node directionality of child.
                 if (child->is_text())
-                    child_direction = text_node_directionality(static_cast<Text const&>(*child));
+                    child_direction = static_cast<Text const&>(*child).directionality();
 
                 // 3. Otherwise:
                 else {
                     // 1. Assert: child is an Element node.
                     VERIFY(child->is_element());
 
-                    // 2. Set childDirection to the auto directionality of child.
-                    child_direction = static_cast<HTML::HTMLElement const&>(*this).auto_directionality();
+                    // 2. Set childDirection to the contained text auto directionality of child with canExcludeRoot set to true.
+                    child_direction = static_cast<Element const&>(*child).contained_text_auto_directionality(true);
                 }
 
                 // 4. If childDirection is not null, then return childDirection.
@@ -2649,20 +2636,38 @@ Optional<Element::Directionality> Element::auto_directionality() const
         }
     }
 
-    // 3. For each node descendant of element's descendants, in tree order:
+    // 3. Return the contained text auto directionality of element with canExcludeRoot set to false.
+    return contained_text_auto_directionality(false);
+}
+
+// https://html.spec.whatwg.org/multipage/dom.html#contained-text-auto-directionality
+Optional<Element::Directionality> Element::contained_text_auto_directionality(bool can_exclude_root) const
+{
+    // To compute the contained text auto directionality of an element element with a boolean canExcludeRoot:
+
+    // 1. For each node descendant of element's descendants, in tree order:
     Optional<Directionality> result;
     for_each_in_subtree([&](auto& descendant) {
-        // 1. If descendant, or any of its ancestor elements that are descendants of element, is one of
-        // - FIXME: a bdi element
-        // - a script element
-        // - a style element
-        // - a textarea element
-        // - an element whose dir attribute is not in the undefined state
-        // then continue.
-        if (is<HTML::HTMLScriptElement>(descendant)
-            || is<HTML::HTMLStyleElement>(descendant)
-            || is<HTML::HTMLTextAreaElement>(descendant)
-            || (is<Element>(descendant) && static_cast<Element const&>(descendant).dir().has_value())) {
+        // 1. If any of
+        //    - descendant
+        //    - any ancestor element of descendant that is a descendant of element
+        //    - if canExcludeRoot is true, element
+        //    is one of
+        //    - FIXME: a bdi element
+        //    - a script element
+        //    - a style element
+        //    - a textarea element
+        //    - an element whose dir attribute is not in the undefined state
+        //    then continue.
+        // NOTE: "any ancestor element of descendant that is a descendant of element" will be iterated already.
+        auto is_one_of_the_filtered_elements = [](auto& descendant) -> bool {
+            return is<HTML::HTMLScriptElement>(descendant)
+                || is<HTML::HTMLStyleElement>(descendant)
+                || is<HTML::HTMLTextAreaElement>(descendant)
+                || (is<Element>(descendant) && static_cast<Element const&>(descendant).dir().has_value());
+        };
+        if (is_one_of_the_filtered_elements(descendant)
+            || (can_exclude_root && is_one_of_the_filtered_elements(*this))) {
             return TraversalDecision::SkipChildrenAndContinue;
         }
 
@@ -2682,7 +2687,7 @@ Optional<Element::Directionality> Element::auto_directionality() const
             return TraversalDecision::Continue;
 
         // 4. Let result be the text node directionality of descendant.
-        result = text_node_directionality(static_cast<Text const&>(descendant));
+        result = static_cast<Text const&>(descendant).directionality();
 
         // 5. If result is not null, then return result.
         if (result.has_value())
@@ -2694,7 +2699,7 @@ Optional<Element::Directionality> Element::auto_directionality() const
     if (result.has_value())
         return result;
 
-    // 4. Return null.
+    // 2. Return null.
     return {};
 }
 

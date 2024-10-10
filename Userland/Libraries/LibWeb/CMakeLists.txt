@@ -44,6 +44,8 @@ set(SOURCES
     CSS/CSSKeyframeRule.cpp
     CSS/CSSKeyframesRule.cpp
     CSS/CSSFontFaceRule.cpp
+    CSS/CSSLayerBlockRule.cpp
+    CSS/CSSLayerStatementRule.cpp
     CSS/CSSMediaRule.cpp
     CSS/CSSNumericType.cpp
     CSS/CSSNamespaceRule.cpp
@@ -63,6 +65,7 @@ set(SOURCES
     CSS/Frequency.cpp
     CSS/GridTrackPlacement.cpp
     CSS/GridTrackSize.cpp
+    CSS/Interpolation.cpp
     CSS/Length.cpp
     CSS/LengthBox.cpp
     CSS/MediaList.cpp
@@ -97,18 +100,19 @@ set(SOURCES
     CSS/SelectorEngine.cpp
     CSS/Serialize.cpp
     CSS/Size.cpp
+    CSS/Sizing.cpp
     CSS/StyleComputer.cpp
     CSS/StyleInvalidation.cpp
     CSS/StyleProperties.cpp
     CSS/StyleProperty.cpp
     CSS/StyleSheet.cpp
+    CSS/StyleSheetIdentifier.cpp
     CSS/StyleSheetList.cpp
     CSS/StyleValues/AngleStyleValue.cpp
     CSS/StyleValues/BackgroundRepeatStyleValue.cpp
     CSS/StyleValues/BackgroundSizeStyleValue.cpp
     CSS/StyleValues/BasicShapeStyleValue.cpp
     CSS/StyleValues/BorderRadiusStyleValue.cpp
-    CSS/StyleValues/CalculatedStyleValue.cpp
     CSS/StyleValues/ConicGradientStyleValue.cpp
     CSS/StyleValues/ContentStyleValue.cpp
     CSS/StyleValues/CounterDefinitionsStyleValue.cpp
@@ -117,6 +121,7 @@ set(SOURCES
     CSS/StyleValues/CSSHSL.cpp
     CSS/StyleValues/CSSHWB.cpp
     CSS/StyleValues/CSSKeywordValue.cpp
+    CSS/StyleValues/CSSMathValue.cpp
     CSS/StyleValues/CSSOKLab.cpp
     CSS/StyleValues/CSSOKLCH.cpp
     CSS/StyleValues/CSSRGB.cpp
@@ -134,6 +139,7 @@ set(SOURCES
     CSS/StyleValues/LinearGradientStyleValue.cpp
     CSS/StyleValues/MathDepthStyleValue.cpp
     CSS/StyleValues/NumberStyleValue.cpp
+    CSS/StyleValues/OpenTypeTaggedStyleValue.cpp
     CSS/StyleValues/PositionStyleValue.cpp
     CSS/StyleValues/RadialGradientStyleValue.cpp
     CSS/StyleValues/RectStyleValue.cpp
@@ -157,6 +163,7 @@ set(SOURCES
     DOM/AccessibilityTreeNode.cpp
     DOM/AdoptedStyleSheets.cpp
     DOM/Attr.cpp
+    DOM/BeforeUnloadEvent.cpp
     DOM/CDATASection.cpp
     DOM/CharacterData.cpp
     DOM/Comment.cpp
@@ -212,6 +219,7 @@ set(SOURCES
     Encoding/TextDecoder.cpp
     Encoding/TextEncoder.cpp
     EntriesAPI/FileSystemEntry.cpp
+    EventTiming/PerformanceEventTiming.cpp
     Fetch/Body.cpp
     Fetch/BodyInit.cpp
     Fetch/Enums.cpp
@@ -258,6 +266,7 @@ set(SOURCES
     Geometry/DOMRect.cpp
     Geometry/DOMRectList.cpp
     Geometry/DOMRectReadOnly.cpp
+    HTML/AbstractWorker.cpp
     HTML/AnimatedBitmapDecodedImageData.cpp
     HTML/AttributeNames.cpp
     HTML/AudioTrack.cpp
@@ -410,7 +419,6 @@ set(SOURCES
     HTML/NavigatorBeacon.cpp
     HTML/NavigatorID.cpp
     HTML/Numbers.cpp
-    HTML/Origin.cpp
     HTML/PageTransitionEvent.cpp
     HTML/PolicyContainers.cpp
     HTML/PopStateEvent.cpp
@@ -442,6 +450,7 @@ set(SOURCES
     HTML/Scripting/SerializedEnvironmentSettingsObject.cpp
     HTML/SelectedFile.cpp
     HTML/SelectItem.cpp
+    HTML/ServiceWorker.cpp
     HTML/ServiceWorkerContainer.cpp
     HTML/ServiceWorkerRegistration.cpp
     HTML/SessionHistoryEntry.cpp
@@ -455,6 +464,8 @@ set(SOURCES
     HTML/TagNames.cpp
     HTML/TextMetrics.cpp
     HTML/TextTrack.cpp
+    HTML/TextTrackCue.cpp
+    HTML/TextTrackCueList.cpp
     HTML/TextTrackList.cpp
     HTML/Timer.cpp
     HTML/TimeRanges.cpp
@@ -525,6 +536,7 @@ set(SOURCES
     Layout/SVGForeignObjectBox.cpp
     Layout/SVGGeometryBox.cpp
     Layout/SVGGraphicsBox.cpp
+    Layout/SVGImageBox.cpp
     Layout/SVGSVGBox.cpp
     Layout/SVGMaskBox.cpp
     Layout/SVGClipBox.cpp
@@ -545,6 +557,7 @@ set(SOURCES
     Loader/ResourceLoader.cpp
     MathML/MathMLElement.cpp
     MathML/TagNames.cpp
+    MediaCapabilitiesAPI/MediaCapabilities.cpp
     MimeSniff/MimeType.cpp
     MimeSniff/Resource.cpp
     MixedContent/AbstractOperations.cpp
@@ -621,8 +634,12 @@ set(SOURCES
     ResizeObserver/ResizeObserverEntry.cpp
     ResizeObserver/ResizeObserverSize.cpp
     SecureContexts/AbstractOperations.cpp
+    ServiceWorker/Job.cpp
+    ServiceWorker/Registration.cpp
+    ServiceWorker/ServiceWorker.cpp
     SRI/SRI.cpp
     StorageAPI/NavigatorStorage.cpp
+    StorageAPI/StorageKey.cpp
     StorageAPI/StorageManager.cpp
     Streams/AbstractOperations.cpp
     Streams/ByteLengthQueuingStrategy.cpp
@@ -659,6 +676,7 @@ set(SOURCES
     SVG/SVGGeometryElement.cpp
     SVG/SVGGraphicsElement.cpp
     SVG/SVGGradientElement.cpp
+    SVG/SVGImageElement.cpp
     SVG/SVGPathElement.cpp
     SVG/SVGCircleElement.cpp
     SVG/SVGEllipseElement.cpp
@@ -689,11 +707,14 @@ set(SOURCES
     SVG/TagNames.cpp
     SVG/ViewBox.cpp
     Selection/Selection.cpp
+    UIEvents/CompositionEvent.cpp
     UIEvents/EventNames.cpp
     UIEvents/FocusEvent.cpp
+    UIEvents/InputEvent.cpp
     UIEvents/KeyboardEvent.cpp
     UIEvents/MouseEvent.cpp
     UIEvents/PointerEvent.cpp
+    UIEvents/TextEvent.cpp
     UIEvents/UIEvent.cpp
     UIEvents/WheelEvent.cpp
     UserTiming/PerformanceMark.cpp
@@ -717,12 +738,16 @@ set(SOURCES
     WebAudio/OfflineAudioContext.cpp
     WebAudio/OscillatorNode.cpp
     WebAudio/PeriodicWave.cpp
+    WebDriver/Actions.cpp
     WebDriver/Capabilities.cpp
     WebDriver/Client.cpp
     WebDriver/Contexts.cpp
     WebDriver/ElementLocationStrategies.cpp
+    WebDriver/ElementReference.cpp
     WebDriver/Error.cpp
     WebDriver/ExecuteScript.cpp
+    WebDriver/InputSource.cpp
+    WebDriver/InputState.cpp
     WebDriver/Response.cpp
     WebDriver/Screenshot.cpp
     WebDriver/TimeoutsConfiguration.cpp
@@ -741,6 +766,8 @@ set(SOURCES
     WebIDL/Promise.cpp
     WebIDL/Tracing.cpp
     WebSockets/WebSocket.cpp
+    WebVTT/VTTCue.cpp
+    WebVTT/VTTRegion.cpp
     XHR/EventNames.cpp
     XHR/FormData.cpp
     XHR/FormDataIterator.cpp
@@ -786,7 +813,7 @@ set(GENERATED_SOURCES
 
 serenity_lib(LibWeb web)
 
-target_link_libraries(LibWeb PRIVATE LibCore LibCrypto LibJS LibHTTP LibGfx LibIPC LibRegex LibSyntax LibTextCodec LibUnicode LibAudio LibMedia LibWasm LibXML LibIDL LibURL LibTLS LibRequests ${SKIA_LIBRARIES})
+target_link_libraries(LibWeb PRIVATE LibCore LibCrypto LibJS LibHTTP LibGfx LibIPC LibRegex LibSyntax LibTextCodec LibUnicode LibMedia LibWasm LibXML LibIDL LibURL LibTLS LibRequests skia)
 
 generate_js_bindings(LibWeb)
 
@@ -800,36 +827,11 @@ if (ENABLE_SWIFT)
 
     generate_clang_module_map(LibWeb GENERATED_FILES ${LIBWEB_ALL_GENERATED_HEADERS})
 
-    target_compile_features(LibWeb PUBLIC cxx_std_23)
-
     target_sources(LibWeb PRIVATE
         HTML/Parser/HTMLToken.swift
         HTML/Parser/HTMLTokenizer.swift
         HTML/Parser/HTMLTokenizerHelpers.cpp
     )
-    target_compile_definitions(LibWeb PRIVATE LIBWEB_USE_SWIFT)
-    set_target_properties(LibWeb PROPERTIES Swift_MODULE_NAME "SwiftLibWeb")
-
     target_link_libraries(LibWeb PRIVATE AK Collections)
-
-    # FIXME: These should be pulled automatically from interface compile options for the target
-    set(VFS_OVERLAY_OPTIONS
-        -Xcc -ivfsoverlay${CMAKE_CURRENT_BINARY_DIR}/vfs_overlay.yaml
-        -Xcc -ivfsoverlay${CMAKE_CURRENT_BINARY_DIR}/../LibGfx/vfs_overlay.yaml
-        -Xcc -ivfsoverlay${Lagom_BINARY_DIR}/AK/vfs_overlay.yaml
-    )
-    get_target_property(LIBWEB_NATIVE_DIRS LibWeb INCLUDE_DIRECTORIES)
-    list(APPEND LIBWEB_NATIVE_DIRS ${CMAKE_Swift_MODULE_DIRECTORY})
-
-    _swift_generate_cxx_header(LibWeb "LibWeb-Swift.h"
-        SEARCH_PATHS ${LIBWEB_NATIVE_DIRS}
-        COMPILE_OPTIONS ${VFS_OVERLAY_OPTIONS}
-    )
-
-    # FIXME: https://gitlab.kitware.com/cmake/cmake/-/issues/26175
-    if (APPLE)
-        add_custom_command(TARGET LibWeb POST_BUILD
-            COMMAND install_name_tool -id @rpath/liblagom-web.0.dylib "$<TARGET_FILE:LibWeb>"
-        )
-    endif()
+    add_swift_target_properties(LibWeb LAGOM_LIBRARIES AK LibGfx)
 endif()

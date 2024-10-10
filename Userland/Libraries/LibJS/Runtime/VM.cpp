@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2020-2023, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2020-2023, Linus Groh <linusg@serenityos.org>
  * Copyright (c) 2021-2022, David Tuin <davidot@serenityos.org>
  *
@@ -163,6 +163,10 @@ VM::VM(OwnPtr<CustomData> custom_data, ErrorMessages error_messages)
             return throw_completion<RangeError>(ErrorType::NotEnoughMemoryToAllocate, new_byte_length);
 
         return HandledByHost::Handled;
+    };
+
+    // AD-HOC: Inform the host that we received a date string we were unable to parse.
+    host_unrecognized_date_string = [](StringView) {
     };
 }
 

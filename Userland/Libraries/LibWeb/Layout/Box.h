@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2022, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2022, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -52,7 +52,11 @@ public:
 
     bool is_scroll_container() const;
 
-    bool is_user_scrollable() const;
+    void add_contained_abspos_child(JS::NonnullGCPtr<Node> child) { m_contained_abspos_children.append(child); }
+    void clear_contained_abspos_children() { m_contained_abspos_children.clear(); }
+    Vector<JS::NonnullGCPtr<Node>> const& contained_abspos_children() const { return m_contained_abspos_children; }
+
+    virtual void visit_edges(Cell::Visitor&) override;
 
 protected:
     Box(DOM::Document&, DOM::Node*, NonnullRefPtr<CSS::StyleProperties>);
@@ -64,6 +68,8 @@ private:
     Optional<CSSPixels> m_natural_width;
     Optional<CSSPixels> m_natural_height;
     Optional<CSSPixelFraction> m_natural_aspect_ratio;
+
+    Vector<JS::NonnullGCPtr<Node>> m_contained_abspos_children;
 };
 
 template<>

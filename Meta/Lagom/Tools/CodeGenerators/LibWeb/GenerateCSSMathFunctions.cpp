@@ -90,22 +90,22 @@ ErrorOr<void> generate_implementation_file(JsonObject& functions_data, Core::Fil
 #include <LibWeb/CSS/MathFunctions.h>
 #include <LibWeb/CSS/Parser/Parser.h>
 #include <LibWeb/CSS/Enums.h>
-#include <LibWeb/CSS/StyleValues/CalculatedStyleValue.h>
+#include <LibWeb/CSS/StyleValues/CSSMathValue.h>
 
 namespace Web::CSS::Parser {
 
 static Optional<RoundingStrategy> parse_rounding_strategy(Vector<ComponentValue> const& tokens)
 {
     auto stream = TokenStream { tokens };
-    stream.skip_whitespace();
+    stream.discard_whitespace();
     if (!stream.has_next_token())
         return {};
 
-    auto& ident = stream.next_token();
+    auto& ident = stream.consume_a_token();
     if (!ident.is(Token::Type::Ident))
         return {};
 
-    stream.skip_whitespace();
+    stream.discard_whitespace();
     if (stream.has_next_token())
         return {};
 

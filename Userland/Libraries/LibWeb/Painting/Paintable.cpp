@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2022-2023, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -26,6 +26,7 @@ Paintable::Paintable(Layout::Node const& layout_node)
     }
 
     m_fixed_position = computed_values.position() == CSS::Positioning::Fixed;
+    m_sticky_position = computed_values.position() == CSS::Positioning::Sticky;
     m_absolutely_positioned = computed_values.position() == CSS::Positioning::Absolute;
     m_floating = layout_node.is_floating();
     m_inline = layout_node.is_inline();
@@ -127,24 +128,27 @@ void Paintable::invalidate_stacking_context()
     m_stacking_context = nullptr;
 }
 
-void Paintable::set_needs_display()
+void Paintable::set_needs_display(InvalidateDisplayList should_invalidate_display_list)
 {
+    auto& document = const_cast<DOM::Document&>(this->document());
+    if (should_invalidate_display_list == InvalidateDisplayList::Yes)
+        document.invalidate_display_list();
+
     auto* containing_block = this->containing_block();
     if (!containing_block)
         return;
 
-    auto& document = const_cast<DOM::Document&>(this->document());
-
     if (is<Painting::InlinePaintable>(*this)) {
         auto const& fragments = static_cast<Painting::InlinePaintable const*>(this)->fragments();
-        for (auto const& fragment : fragments)
-            document.set_needs_display(fragment.absolute_rect());
+        for (auto const& fragment : fragments) {
+            document.set_needs_display(fragment.absolute_rect(), InvalidateDisplayList::No);
+        }
     }
 
     if (!is<Painting::PaintableWithLines>(*containing_block))
         return;
     static_cast<Painting::PaintableWithLines const&>(*containing_block).for_each_fragment([&](auto& fragment) {
-        document.set_needs_display(fragment.absolute_rect());
+        document.set_needs_display(fragment.absolute_rect(), InvalidateDisplayList::No);
         return IterationDecision::Continue;
     });
 }

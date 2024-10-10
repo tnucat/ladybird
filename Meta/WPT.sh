@@ -4,20 +4,26 @@ set -e
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-LADYBIRD_SOURCE_DIR="$(realpath "${DIR}"/..)"
-WPT_SOURCE_DIR=${WPT_SOURCE_DIR:-"${LADYBIRD_SOURCE_DIR}/Tests/LibWeb/WPT/wpt"}
-WPT_REPOSITORY_URL=${WPT_REPOSITORY_URL:-"https://github.com/web-platform-tests/wpt.git"}
-
 # shellcheck source=/dev/null
 . "${DIR}/shell_include.sh"
 
+ensure_ladybird_source_dir
+
+WPT_SOURCE_DIR=${WPT_SOURCE_DIR:-"${LADYBIRD_SOURCE_DIR}/Tests/LibWeb/WPT/wpt"}
+WPT_REPOSITORY_URL=${WPT_REPOSITORY_URL:-"https://github.com/web-platform-tests/wpt.git"}
+
+BUILD_PRESET=${BUILD_PRESET:-default}
+
+BUILD_DIR=$(get_build_dir "$BUILD_PRESET")
+
 default_binary_path() {
     if [ "$(uname -s)" = "Darwin" ]; then
-        echo "${LADYBIRD_SOURCE_DIR}/Build/ladybird/bin/Ladybird.app/Contents/MacOS/"
+        echo "${BUILD_DIR}/bin/Ladybird.app/Contents/MacOS/"
     else
-        echo "${LADYBIRD_SOURCE_DIR}/Build/ladybird/bin/"
+        echo "${BUILD_DIR}/bin/"
     fi
 }
+
 LADYBIRD_BINARY=${LADYBIRD_BINARY:-"$(default_binary_path)/Ladybird"}
 WEBDRIVER_BINARY=${WEBDRIVER_BINARY:-"$(default_binary_path)/WebDriver"}
 WPT_PROCESSES=${WPT_PROCESSES:-$(get_number_of_processing_units)}
@@ -54,6 +60,8 @@ print_help() {
           Run all of the Web Platform Tests.
       $NAME run --log expectations.log css dom
           Run the Web Platform Tests in the 'css' and 'dom' directories and save the output to expectations.log.
+      $NAME run --log-wptreport expectations.json --log-wptscreenshot expectations.db css dom
+          Run the Web Platform Tests in the 'css' and 'dom' directories; save the output in wptreport format to expectations.json and save screenshots to expectations.db.
       $NAME compare expectations.log
           Run all of the Web Platform Tests comparing the results to the expectations in before.log.
       $NAME compare --log results.log expectations.log css/CSS2
@@ -75,13 +83,22 @@ if [ "$CMD" = "--help" ] || [ "$CMD" = "help" ]; then
 fi
 
 ARG=$1
-if [ "$ARG" = "--log" ]; then
+while [[ "$ARG" =~ ^--log(-(raw|unittest|xunit|html|mach|tbpl|grouped|chromium|wptreport|wptscreenshot))?$ ]]; do
+    case "$ARG" in
+        --log)
+            LOG_TYPE="--log-raw"
+            ;;
+        *)
+            LOG_TYPE="$ARG"
+            ;;
+    esac
     shift
     LOG_NAME="$(pwd -P)/$1"
     [ -n "$LOG_NAME" ] || usage;
+    WPT_ARGS+=( "${LOG_TYPE}=${LOG_NAME}" )
     shift
-    WPT_ARGS+=( "--log-raw=${LOG_NAME}" )
-fi
+    ARG=$1
+done
 TEST_LIST=( "$@" )
 
 exit_if_running_as_root "Do not run WPT.sh as root"

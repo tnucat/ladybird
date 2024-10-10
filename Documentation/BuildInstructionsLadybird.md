@@ -14,7 +14,7 @@ CMake 3.25 or newer must be available in $PATH.
 ### Debian/Ubuntu:
 
 ```bash
-sudo apt install autoconf autoconf-archive automake build-essential ccache cmake curl fonts-liberation2 git libavcodec-dev libgl1-mesa-dev nasm ninja-build pkg-config qt6-base-dev qt6-tools-dev-tools qt6-wayland tar unzip zip
+sudo apt install autoconf autoconf-archive automake build-essential ccache cmake curl fonts-liberation2 git libavcodec-dev libavformat-dev libavutil-dev libgl1-mesa-dev nasm ninja-build pkg-config qt6-base-dev qt6-tools-dev-tools qt6-wayland tar unzip zip
 ```
 
 #### CMake 3.25 or newer:
@@ -83,12 +83,12 @@ sudo pacman -S --needed autoconf-archive automake base-devel ccache cmake curl f
 
 ### Fedora or derivatives:
 ```
-sudo dnf install autoconf-archive automake ccache cmake curl libavcodec-free-devel liberation-sans-fonts libglvnd-devel nasm ninja-build qt6-qtbase-devel qt6-qtmultimedia-devel qt6-qttools-devel qt6-qtwayland-devel tar unzip zip zlib-ng-compat-static
+sudo dnf install autoconf-archive automake ccache cmake curl libavcodec-free-devel libavformat-free-devel liberation-sans-fonts libglvnd-devel nasm ninja-build perl-FindBin perl-IPC-Cmd qt6-qtbase-devel qt6-qtmultimedia-devel qt6-qttools-devel qt6-qtwayland-devel tar unzip zip zlib-ng-compat-static
 ```
 
 ### openSUSE:
 ```
-sudo zypper install autoconf-archive automake ccache cmake curl ffmpeg-7-libavcodec-devel gcc13 gcc13-c++ liberation-fonts libglvnd-devel nasm ninja qt6-base-devel qt6-multimedia-devel qt6-tools-devel qt6-wayland-devel tar unzip zip
+sudo zypper install autoconf-archive automake ccache cmake curl ffmpeg-7-libavcodec-devel ffmpeg-7-libavformat-devel gcc13 gcc13-c++ liberation-fonts libglvnd-devel nasm ninja qt6-base-devel qt6-multimedia-devel qt6-tools-devel qt6-wayland-devel tar unzip zip
 ```
 The build process requires at least python3.7; openSUSE Leap only features Python 3.6 as default, so it is recommendable to install package python311 and create a virtual environment (venv) in this case.
 
@@ -216,17 +216,29 @@ The section lists out some particular error messages you may run into, and expla
 
 #### Unable to find a build program corresponding to "Ninja"
 
-Solution to try: If you do in fact already have Ninja installed, then first try reinstalling Ninja.
-
-Details: If you see the message *“Unable to find a build program corresponding to "Ninja"”*, it’s likely not an indication that the build tooling can’t actually find Ninja, but instead an indication that the tooling found Ninja but it failed to run successfully.
-
-So, when you do run into that error message, the way to start figuring out what’s actually wrong is to try invoking Ninja manually, like this:
+This error message is a red herring. We use vcpkg to manage our third-party dependencies, and this error is logged when
+something went wrong building those dependencies. The output in your terminal will vary depending on what exactly went
+wrong, but it should look something like:
 
 ```
-ninja -C Build/ladybird
+error: building skia:x64-linux failed with: BUILD_FAILED
+Elapsed time to handle skia:x64-linux: 1.6 s
+
+-- Running vcpkg install - failed
+CMake Error at Toolchain/Tarballs/vcpkg/scripts/buildsystems/vcpkg.cmake:899 (message):
+  vcpkg install failed.  See logs for more information:
+  Build/ladybird/vcpkg-manifest-install.log
+Call Stack (most recent call first):
+  /usr/share/cmake-3.30/Modules/CMakeDetermineSystem.cmake:146 (include)
+  CMakeLists.txt:15 (project)
+
+CMake Error: CMake was unable to find a build program corresponding to "Ninja".  CMAKE_MAKE_PROGRAM is not set.  You probably need to select a different build tool.
+-- Configuring incomplete, errors occurred!  See logs for more information:
+  Build/ladybird/vcpkg-manifest-install.log
 ```
 
-Then, based on what output you get from that, you can troubleshoot the *actual* problem you’re running into — which may involve uninstalling your current Ninja install, and then re-installing it.
+If the error is not immediately clear from the terminal output, be sure to check `Build/ladybird/vcpkg-manifest-install.log`
+for more information.
 
 ### Resource files
 

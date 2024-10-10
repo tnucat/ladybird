@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2020, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2022-2024, Sam Atkins <sam@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
@@ -77,6 +77,7 @@ inline bool is_css_wide_keyword(StringView name)
     return name.equals_ignoring_ascii_case("inherit"sv)
         || name.equals_ignoring_ascii_case("initial"sv)
         || name.equals_ignoring_ascii_case("revert"sv)
+        || name.equals_ignoring_ascii_case("revert-layer"sv)
         || name.equals_ignoring_ascii_case("unset"sv);
 }
 

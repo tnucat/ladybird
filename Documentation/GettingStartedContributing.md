@@ -25,8 +25,15 @@ Here are some of the ways you can find an issue in Ladybird:
 * By checking the [issue tracker](https://github.com/LadybirdBrowser/ladybird/issues).
 * Manually, by using the browser as you normally would.
 * By finding failing WPT tests on [WPT.fyi](https://wpt.fyi/results/?label=master&product=ladybird). Note that while fixes are welcome, you don't need to submit issue reports for individual tests.
+* By finding WPT tests on [WPT.fyi](https://wpt.fyi/results/?label=master&product=ladybird) that are [timing out in Ladybird](https://wpt.fyi/results/?product=ladybird&q=status%3Atimeout). For a real-world walk-through of doing that from start to finish with an actual timing-out-in-Ladybird test case, see the [“Fixing a WPT timeout in Window.postMessage()”](https://www.youtube.com/watch?v=X4S9afzRTXs) “browser hacking” video.
 
-There currently isn't a list of beginner-friendly issues, nor a strict roadmap of ones to address first. It is ultimately up to you to choose a task that you feel comfortable working on.
+If you’re not necessarily already a proficient C++ programmer, beginning by troubleshooting WPT tests may be the very best way to get started contributing to the project — especially if you _do_ already have some proficiency with frontend JavaScript code.
+
+That’s because without even knowing any C++ at all, you can still — by working just with the JavaScript code in the WPT test source — get a long way toward isolating the cause of a particular WPT test failure or timeout. And that alone can be a very big help to other contributors who can then follow up on your work by digging further into the related C++ code.
+
+That said, if you _do_ want to start learning some C++ programming yourself, then working from a WPT test case may be the very best way for you on your own to start — by getting an understanding of how and where the JavaScript code in the WPT test ends up calling into the related C++ code in the Ladybird sources — and then start fixing the underlying problem in the C++ code on your own.
+
+The list of [beginner-friendly issues](https://github.com/LadybirdBrowser/ladybird/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) is usually very short, and there currently isn't a strict roadmap of issues to address first. It is ultimately up to you to choose a task that you feel comfortable working on.
 
 ## Submitting an issue
 If you have found an issue that is not already in the [issue tracker](https://github.com/LadybirdBrowser/ladybird/issues), you may submit it. Do not submit general questions about the project, please use the Discord server instead.
@@ -42,6 +49,7 @@ Ladybird makes use of the included AK library instead of the C++ STL, and employ
 
 Developer documentation:
 
+* [Coding style](CodingStyle.md)
 * [Coding patterns](Patterns.md)
 * [Smart pointers](SmartPointers.md)
 * [String formatting](StringFormatting.md)
@@ -65,7 +73,7 @@ git push --set-upstream myfork mybranch
 git push
 ```
 
-If your pull request is showing conflicts with the master branch, resolve them locally with:
+If you wish to sync your branch with master, or locally resolve merge conflicts, use:
 ```sh
 # On mybranch
 git fetch origin

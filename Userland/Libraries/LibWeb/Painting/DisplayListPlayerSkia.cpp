@@ -19,6 +19,7 @@
 #include <effects/SkDashPathEffect.h>
 #include <effects/SkGradientShader.h>
 #include <effects/SkImageFilters.h>
+#include <effects/SkRuntimeEffect.h>
 #include <gpu/GrDirectContext.h>
 #include <gpu/ganesh/SkSurfaceGanesh.h>
 #include <pathops/SkPathOps.h>
@@ -31,19 +32,15 @@
 
 #ifdef USE_VULKAN
 #    include <gpu/ganesh/vk/GrVkDirectContext.h>
-#    include <gpu/vk/GrVkBackendContext.h>
 #    include <gpu/vk/VulkanBackendContext.h>
 #    include <gpu/vk/VulkanExtensions.h>
 #endif
 
 #ifdef AK_OS_MACOS
-#    define FixedPoint FixedPointMacOS
-#    define Duration DurationMacOS
 #    include <gpu/GrBackendSurface.h>
 #    include <gpu/ganesh/mtl/GrMtlBackendContext.h>
+#    include <gpu/ganesh/mtl/GrMtlBackendSurface.h>
 #    include <gpu/ganesh/mtl/GrMtlDirectContext.h>
-#    undef FixedPoint
-#    undef Duration
 #endif
 
 namespace Web::Painting {
@@ -108,7 +105,7 @@ private:
 
 OwnPtr<SkiaBackendContext> DisplayListPlayerSkia::create_vulkan_context(Core::VulkanContext& vulkan_context)
 {
-    GrVkBackendContext backend_context;
+    skgpu::VulkanBackendContext backend_context;
 
     backend_context.fInstance = vulkan_context.instance;
     backend_context.fDevice = vulkan_context.logical_device;
@@ -159,7 +156,7 @@ public:
     {
         GrMtlTextureInfo mtl_info;
         mtl_info.fTexture = sk_ret_cfp(metal_texture.texture());
-        auto backend_render_target = GrBackendRenderTarget(metal_texture.width(), metal_texture.height(), mtl_info);
+        auto backend_render_target = GrBackendRenderTargets::MakeMtl(metal_texture.width(), metal_texture.height(), mtl_info);
         return SkSurfaces::WrapBackendRenderTarget(m_context.get(), backend_render_target, kTopLeft_GrSurfaceOrigin, kBGRA_8888_SkColorType, nullptr, nullptr);
     }
 
@@ -317,9 +314,9 @@ static SkSamplingOptions to_skia_sampling_options(Gfx::ScalingMode scaling_mode)
 {
     switch (scaling_mode) {
     case Gfx::ScalingMode::NearestNeighbor:
+    case Gfx::ScalingMode::SmoothPixels:
         return SkSamplingOptions(SkFilterMode::kNearest);
     case Gfx::ScalingMode::BilinearBlend:
-    case Gfx::ScalingMode::SmoothPixels:
         return SkSamplingOptions(SkFilterMode::kLinear);
     case Gfx::ScalingMode::BoxSampling:
         return SkSamplingOptions(SkCubicResampler::Mitchell());
@@ -344,18 +341,13 @@ void DisplayListPlayerSkia::draw_glyph_run(DrawGlyphRun const& command)
     Vector<SkPoint> positions;
     positions.ensure_capacity(glyph_count);
     auto font_ascent = gfx_font.pixel_metrics().ascent;
-    for (auto const& glyph_or_emoji : command.glyph_run->glyphs()) {
-        auto transformed_glyph = glyph_or_emoji;
-        transformed_glyph.visit([&](auto& glyph) {
-            glyph.position.set_y(glyph.position.y() + font_ascent);
-            glyph.position = glyph.position.scaled(command.scale);
-        });
-        if (transformed_glyph.has<Gfx::DrawGlyph>()) {
-            auto& glyph = transformed_glyph.get<Gfx::DrawGlyph>();
-            auto const& point = glyph.position;
-            glyphs.append(glyph.glyph_id);
-            positions.append(to_skia_point(point));
-        }
+    for (auto const& glyph : command.glyph_run->glyphs()) {
+        auto transformed_glyph = glyph;
+        transformed_glyph.position.set_y(glyph.position.y() + font_ascent);
+        transformed_glyph.position = transformed_glyph.position.scaled(command.scale);
+        auto const& point = transformed_glyph.position;
+        glyphs.append(transformed_glyph.glyph_id);
+        positions.append(to_skia_point(point));
     }
 
     SkPaint paint;
@@ -435,25 +427,6 @@ void DisplayListPlayerSkia::restore(Restore const&)
     canvas.restore();
 }
 
-static SkBitmap alpha_mask_from_bitmap(Gfx::Bitmap const& bitmap, Gfx::Bitmap::MaskKind kind)
-{
-    SkBitmap alpha_mask;
-    alpha_mask.allocPixels(SkImageInfo::MakeA8(bitmap.width(), bitmap.height()));
-    for (int y = 0; y < bitmap.height(); y++) {
-        for (int x = 0; x < bitmap.width(); x++) {
-            if (kind == Gfx::Bitmap::MaskKind::Luminance) {
-                auto color = bitmap.get_pixel(x, y);
-                *alpha_mask.getAddr8(x, y) = color.alpha() * color.luminosity() / 255;
-            } else {
-                VERIFY(kind == Gfx::Bitmap::MaskKind::Alpha);
-                auto color = bitmap.get_pixel(x, y);
-                *alpha_mask.getAddr8(x, y) = color.alpha();
-            }
-        }
-    }
-    return alpha_mask;
-}
-
 void DisplayListPlayerSkia::push_stacking_context(PushStackingContext const& command)
 {
     auto& canvas = surface().canvas();
@@ -479,19 +452,6 @@ void DisplayListPlayerSkia::push_stacking_context(PushStackingContext const& com
         canvas.clipPath(to_skia_path(command.clip_path.value()), true);
     }
 
-    if (command.mask.has_value()) {
-        auto alpha_mask = alpha_mask_from_bitmap(*command.mask.value().mask_bitmap, command.mask.value().mask_kind);
-        SkMatrix mask_matrix;
-        auto mask_position = command.source_paintable_rect.location();
-        mask_matrix.setTranslate(mask_position.x(), mask_position.y());
-        auto shader = alpha_mask.makeShader(SkSamplingOptions(), mask_matrix);
-        canvas.clipShader(shader);
-    }
-
-    if (command.is_fixed_position) {
-        // FIXME: Resetting matrix is not correct when element is nested in a transformed stacking context
-        canvas.resetMatrix();
-    }
     canvas.concat(matrix);
 }
 
@@ -1280,6 +1240,70 @@ void DisplayListPlayerSkia::paint_scrollbar(PaintScrollBar const& command)
     stroke_paint.setStrokeWidth(1);
     stroke_paint.setColor(to_skia_color(stroke_color));
     canvas.drawRRect(rrect, stroke_paint);
+}
+
+void DisplayListPlayerSkia::apply_opacity(ApplyOpacity const& command)
+{
+    auto& canvas = surface().canvas();
+    SkPaint paint;
+    paint.setAlphaf(command.opacity);
+    canvas.saveLayer(nullptr, &paint);
+}
+
+void DisplayListPlayerSkia::apply_transform(ApplyTransform const& command)
+{
+    auto affine_transform = Gfx::extract_2d_affine_transform(command.matrix);
+    auto new_transform = Gfx::AffineTransform {}
+                             .set_translation(command.post_transform_translation.to_type<float>())
+                             .translate(command.origin)
+                             .multiply(affine_transform)
+                             .translate(-command.origin);
+    auto matrix = to_skia_matrix(new_transform);
+    surface().canvas().concat(matrix);
+}
+
+void DisplayListPlayerSkia::apply_mask_bitmap(ApplyMaskBitmap const& command)
+{
+    auto& canvas = surface().canvas();
+
+    auto sk_bitmap = to_skia_bitmap(*command.bitmap);
+    auto mask_image = SkImages::RasterFromBitmap(sk_bitmap);
+
+    char const* sksl_shader = nullptr;
+    if (command.kind == Gfx::Bitmap::MaskKind::Luminance) {
+        sksl_shader = R"(
+                uniform shader mask_image;
+                half4 main(float2 coord) {
+                    half4 color = mask_image.eval(coord);
+                    half luminance = 0.2126 * color.b + 0.7152 * color.g + 0.0722 * color.r;
+                    return half4(0.0, 0.0, 0.0, color.a * luminance);
+                }
+            )";
+    } else if (command.kind == Gfx::Bitmap::MaskKind::Alpha) {
+        sksl_shader = R"(
+                uniform shader mask_image;
+                half4 main(float2 coord) {
+                    half4 color = mask_image.eval(coord);
+                    return half4(0.0, 0.0, 0.0, color.a);
+                }
+            )";
+    } else {
+        VERIFY_NOT_REACHED();
+    }
+
+    auto [effect, error] = SkRuntimeEffect::MakeForShader(SkString(sksl_shader));
+    if (!effect) {
+        dbgln("SkSL error: {}", error.c_str());
+        VERIFY_NOT_REACHED();
+    }
+
+    SkMatrix mask_matrix;
+    auto mask_position = command.origin;
+    mask_matrix.setTranslate(mask_position.x(), mask_position.y());
+
+    SkRuntimeShaderBuilder builder(effect);
+    builder.child("mask_image") = mask_image->makeShader(SkSamplingOptions(), mask_matrix);
+    canvas.clipShader(builder.makeShader());
 }
 
 bool DisplayListPlayerSkia::would_be_fully_clipped_by_painter(Gfx::IntRect rect) const

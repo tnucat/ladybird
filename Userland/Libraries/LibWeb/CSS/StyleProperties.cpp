@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018-2024, Andreas Kling <andreas@ladybird.org>
- * Copyright (c) 2021-2024, Sam Atkins <atkinssj@serenityos.org>
+ * Copyright (c) 2021-2024, Sam Atkins <sam@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -23,6 +23,7 @@
 #include <LibWeb/CSS/StyleValues/LengthStyleValue.h>
 #include <LibWeb/CSS/StyleValues/MathDepthStyleValue.h>
 #include <LibWeb/CSS/StyleValues/NumberStyleValue.h>
+#include <LibWeb/CSS/StyleValues/OpenTypeTaggedStyleValue.h>
 #include <LibWeb/CSS/StyleValues/PercentageStyleValue.h>
 #include <LibWeb/CSS/StyleValues/PositionStyleValue.h>
 #include <LibWeb/CSS/StyleValues/RectStyleValue.h>
@@ -37,88 +38,98 @@
 
 namespace Web::CSS {
 
-NonnullRefPtr<StyleProperties> StyleProperties::clone() const
+NonnullRefPtr<StyleProperties::Data> StyleProperties::Data::clone() const
 {
-    auto clone = adopt_ref(*new StyleProperties);
+    auto clone = adopt_ref(*new StyleProperties::Data);
+    clone->m_animation_name_source = m_animation_name_source;
+    clone->m_transition_property_source = m_transition_property_source;
     clone->m_property_values = m_property_values;
-    clone->m_animated_property_values = m_animated_property_values;
     clone->m_property_important = m_property_important;
     clone->m_property_inherited = m_property_inherited;
+    clone->m_animated_property_values = m_animated_property_values;
+    clone->m_math_depth = m_math_depth;
     clone->m_font_list = m_font_list;
     clone->m_line_height = m_line_height;
-    clone->m_animation_name_source = m_animation_name_source;
-    clone->m_math_depth = m_math_depth;
     return clone;
+}
+
+NonnullRefPtr<StyleProperties> StyleProperties::clone() const
+{
+    auto cloned = adopt_ref(*new StyleProperties);
+    cloned->m_data = m_data;
+    return cloned;
 }
 
 bool StyleProperties::is_property_important(CSS::PropertyID property_id) const
 {
     size_t n = to_underlying(property_id);
-    return m_property_important[n / 8] & (1 << (n % 8));
+    return m_data->m_property_important[n / 8] & (1 << (n % 8));
 }
 
 void StyleProperties::set_property_important(CSS::PropertyID property_id, Important important)
 {
     size_t n = to_underlying(property_id);
     if (important == Important::Yes)
-        m_property_important[n / 8] |= (1 << (n % 8));
+        m_data->m_property_important[n / 8] |= (1 << (n % 8));
     else
-        m_property_important[n / 8] &= ~(1 << (n % 8));
+        m_data->m_property_important[n / 8] &= ~(1 << (n % 8));
 }
 
 bool StyleProperties::is_property_inherited(CSS::PropertyID property_id) const
 {
     size_t n = to_underlying(property_id);
-    return m_property_inherited[n / 8] & (1 << (n % 8));
+    return m_data->m_property_inherited[n / 8] & (1 << (n % 8));
 }
 
 void StyleProperties::set_property_inherited(CSS::PropertyID property_id, Inherited inherited)
 {
     size_t n = to_underlying(property_id);
     if (inherited == Inherited::Yes)
-        m_property_inherited[n / 8] |= (1 << (n % 8));
+        m_data->m_property_inherited[n / 8] |= (1 << (n % 8));
     else
-        m_property_inherited[n / 8] &= ~(1 << (n % 8));
+        m_data->m_property_inherited[n / 8] &= ~(1 << (n % 8));
 }
 
 void StyleProperties::set_property(CSS::PropertyID id, NonnullRefPtr<CSSStyleValue const> value, Inherited inherited, Important important)
 {
-    m_property_values[to_underlying(id)] = move(value);
+    m_data->m_property_values[to_underlying(id)] = move(value);
     set_property_important(id, important);
     set_property_inherited(id, inherited);
 }
 
 void StyleProperties::revert_property(CSS::PropertyID id, StyleProperties const& style_for_revert)
 {
-    m_property_values[to_underlying(id)] = style_for_revert.m_property_values[to_underlying(id)];
+    m_data->m_property_values[to_underlying(id)] = style_for_revert.m_data->m_property_values[to_underlying(id)];
     set_property_important(id, style_for_revert.is_property_important(id) ? Important::Yes : Important::No);
     set_property_inherited(id, style_for_revert.is_property_inherited(id) ? Inherited::Yes : Inherited::No);
 }
 
 void StyleProperties::set_animated_property(CSS::PropertyID id, NonnullRefPtr<CSSStyleValue const> value)
 {
-    m_animated_property_values.set(id, move(value));
+    m_data->m_animated_property_values.set(id, move(value));
 }
 
 void StyleProperties::reset_animated_properties()
 {
-    m_animated_property_values.clear();
+    m_data->m_animated_property_values.clear();
 }
 
-NonnullRefPtr<CSSStyleValue const> StyleProperties::property(CSS::PropertyID property_id) const
+NonnullRefPtr<CSSStyleValue const> StyleProperties::property(CSS::PropertyID property_id, WithAnimationsApplied return_animated_value) const
 {
-    if (auto animated_value = m_animated_property_values.get(property_id).value_or(nullptr))
-        return *animated_value;
+    if (return_animated_value == WithAnimationsApplied::Yes) {
+        if (auto animated_value = m_data->m_animated_property_values.get(property_id).value_or(nullptr))
+            return *animated_value;
+    }
 
     // By the time we call this method, all properties have values assigned.
-    return *m_property_values[to_underlying(property_id)];
+    return *m_data->m_property_values[to_underlying(property_id)];
 }
 
 RefPtr<CSSStyleValue const> StyleProperties::maybe_null_property(CSS::PropertyID property_id) const
 {
-    if (auto animated_value = m_animated_property_values.get(property_id).value_or(nullptr))
+    if (auto animated_value = m_data->m_animated_property_values.get(property_id).value_or(nullptr))
         return *animated_value;
-    return m_property_values[to_underlying(property_id)];
+    return m_data->m_property_values[to_underlying(property_id)];
 }
 
 CSS::Size StyleProperties::size_value(CSS::PropertyID id) const
@@ -141,8 +152,8 @@ CSS::Size StyleProperties::size_value(CSS::PropertyID id) const
         }
     }
 
-    if (value->is_calculated())
-        return CSS::Size::make_calculated(const_cast<CalculatedStyleValue&>(value->as_calculated()));
+    if (value->is_math())
+        return CSS::Size::make_calculated(const_cast<CSSMathValue&>(value->as_math()));
 
     if (value->is_percentage())
         return CSS::Size::make_percentage(value->as_percentage().percentage());
@@ -168,8 +179,8 @@ Optional<LengthPercentage> StyleProperties::length_percentage(CSS::PropertyID id
 {
     auto value = property(id);
 
-    if (value->is_calculated())
-        return LengthPercentage { const_cast<CalculatedStyleValue&>(value->as_calculated()) };
+    if (value->is_math())
+        return LengthPercentage { const_cast<CSSMathValue&>(value->as_math()) };
 
     if (value->is_percentage())
         return value->as_percentage().percentage();
@@ -237,20 +248,20 @@ CSSPixels StyleProperties::compute_line_height(CSSPixelRect const& viewport_rect
         return Length(percentage.as_fraction(), Length::Type::Em).to_px(viewport_rect, font_metrics, root_font_metrics);
     }
 
-    if (line_height->is_calculated()) {
-        if (line_height->as_calculated().resolves_to_number()) {
-            auto resolved = line_height->as_calculated().resolve_number();
+    if (line_height->is_math()) {
+        if (line_height->as_math().resolves_to_number()) {
+            auto resolved = line_height->as_math().resolve_number();
             if (!resolved.has_value()) {
-                dbgln("FIXME: Failed to resolve calc() line-height (number): {}", line_height->as_calculated().to_string());
-                return CSSPixels::nearest_value_for(m_font_list->first().pixel_metrics().line_spacing());
+                dbgln("FIXME: Failed to resolve calc() line-height (number): {}", line_height->as_math().to_string());
+                return CSSPixels::nearest_value_for(m_data->m_font_list->first().pixel_metrics().line_spacing());
             }
             return Length(resolved.value(), Length::Type::Em).to_px(viewport_rect, font_metrics, root_font_metrics);
         }
 
-        auto resolved = line_height->as_calculated().resolve_length(Length::ResolutionContext { viewport_rect, font_metrics, root_font_metrics });
+        auto resolved = line_height->as_math().resolve_length(Length::ResolutionContext { viewport_rect, font_metrics, root_font_metrics });
         if (!resolved.has_value()) {
-            dbgln("FIXME: Failed to resolve calc() line-height: {}", line_height->as_calculated().to_string());
-            return CSSPixels::nearest_value_for(m_font_list->first().pixel_metrics().line_spacing());
+            dbgln("FIXME: Failed to resolve calc() line-height: {}", line_height->as_math().to_string());
+            return CSSPixels::nearest_value_for(m_data->m_font_list->first().pixel_metrics().line_spacing());
         }
         return resolved->to_px(viewport_rect, font_metrics, root_font_metrics);
     }
@@ -281,16 +292,16 @@ float StyleProperties::resolve_opacity_value(CSSStyleValue const& value)
 
     if (value.is_number()) {
         unclamped_opacity = value.as_number().number();
-    } else if (value.is_calculated()) {
-        auto& calculated = value.as_calculated();
+    } else if (value.is_math()) {
+        auto& calculated = value.as_math();
         if (calculated.resolves_to_percentage()) {
-            auto maybe_percentage = value.as_calculated().resolve_percentage();
+            auto maybe_percentage = value.as_math().resolve_percentage();
             if (maybe_percentage.has_value())
                 unclamped_opacity = maybe_percentage->as_fraction();
             else
                 dbgln("Unable to resolve calc() as opacity (percentage): {}", value.to_string());
         } else if (calculated.resolves_to_number()) {
-            auto maybe_number = const_cast<CalculatedStyleValue&>(value.as_calculated()).resolve_number();
+            auto maybe_number = const_cast<CSSMathValue&>(value.as_math()).resolve_number();
             if (maybe_number.has_value())
                 unclamped_opacity = maybe_number.value();
             else
@@ -391,20 +402,24 @@ Optional<CSS::ImageRendering> StyleProperties::image_rendering() const
     return keyword_to_image_rendering(value->to_keyword());
 }
 
-CSS::Length StyleProperties::border_spacing_horizontal() const
+CSS::Length StyleProperties::border_spacing_horizontal(Layout::Node const& layout_node) const
 {
     auto value = property(CSS::PropertyID::BorderSpacing);
     if (value->is_length())
         return value->as_length().length();
+    if (value->is_math())
+        return value->as_math().resolve_length(layout_node).value_or(CSS::Length(0, CSS::Length::Type::Px));
     auto const& list = value->as_value_list();
     return list.value_at(0, false)->as_length().length();
 }
 
-CSS::Length StyleProperties::border_spacing_vertical() const
+CSS::Length StyleProperties::border_spacing_vertical(Layout::Node const& layout_node) const
 {
     auto value = property(CSS::PropertyID::BorderSpacing);
     if (value->is_length())
         return value->as_length().length();
+    if (value->is_math())
+        return value->as_math().resolve_length(layout_node).value_or(CSS::Length(0, CSS::Length::Type::Px));
     auto const& list = value->as_value_list();
     return list.value_at(1, false)->as_length().length();
 }
@@ -462,8 +477,8 @@ Vector<CSS::Transformation> StyleProperties::transformations_for_style_value(CSS
         Vector<TransformValue> values;
         size_t argument_index = 0;
         for (auto& transformation_value : transformation_style_value.values()) {
-            if (transformation_value->is_calculated()) {
-                auto& calculated = transformation_value->as_calculated();
+            if (transformation_value->is_math()) {
+                auto& calculated = transformation_value->as_math();
                 if (calculated.resolves_to_length_percentage()) {
                     values.append(CSS::LengthPercentage { calculated });
                 } else if (calculated.resolves_to_percentage()) {
@@ -608,12 +623,12 @@ Optional<CSS::Positioning> StyleProperties::position() const
 
 bool StyleProperties::operator==(StyleProperties const& other) const
 {
-    if (m_property_values.size() != other.m_property_values.size())
+    if (m_data->m_property_values.size() != other.m_data->m_property_values.size())
         return false;
 
-    for (size_t i = 0; i < m_property_values.size(); ++i) {
-        auto const& my_style = m_property_values[i];
-        auto const& other_style = other.m_property_values[i];
+    for (size_t i = 0; i < m_data->m_property_values.size(); ++i) {
+        auto const& my_style = m_data->m_property_values[i];
+        auto const& other_style = other.m_data->m_property_values[i];
         if (!my_style) {
             if (other_style)
                 return false;
@@ -660,6 +675,25 @@ Optional<CSS::PointerEvents> StyleProperties::pointer_events() const
 {
     auto value = property(CSS::PropertyID::PointerEvents);
     return keyword_to_pointer_events(value->to_keyword());
+}
+
+Variant<LengthOrCalculated, NumberOrCalculated> StyleProperties::tab_size() const
+{
+    auto value = property(CSS::PropertyID::TabSize);
+    if (value->is_math()) {
+        auto& math_value = value->as_math();
+        if (math_value.resolves_to_length()) {
+            return LengthOrCalculated { math_value };
+        }
+        if (math_value.resolves_to_number()) {
+            return NumberOrCalculated { math_value };
+        }
+    }
+
+    if (value->is_length())
+        return LengthOrCalculated { value->as_length().length() };
+
+    return NumberOrCalculated { value->as_number().number() };
 }
 
 Optional<CSS::WhiteSpace> StyleProperties::white_space() const
@@ -896,8 +930,8 @@ Vector<ShadowData> StyleProperties::shadow(PropertyID property_id, Layout::Node 
     auto resolve_to_length = [&layout_node](NonnullRefPtr<CSSStyleValue const> const& value) -> Optional<Length> {
         if (value->is_length())
             return value->as_length().length();
-        if (value->is_calculated())
-            return value->as_calculated().resolve_length(layout_node);
+        if (value->is_math())
+            return value->as_math().resolve_length(layout_node);
         return {};
     };
 
@@ -978,8 +1012,8 @@ Variant<CSS::VerticalAlign, CSS::LengthPercentage> StyleProperties::vertical_ali
     if (value->is_percentage())
         return CSS::LengthPercentage(value->as_percentage().percentage());
 
-    if (value->is_calculated())
-        return LengthPercentage { const_cast<CalculatedStyleValue&>(value->as_calculated()) };
+    if (value->is_math())
+        return LengthPercentage { const_cast<CSSMathValue&>(value->as_math()) };
 
     VERIFY_NOT_REACHED();
 }
@@ -988,6 +1022,68 @@ Optional<CSS::FontVariant> StyleProperties::font_variant() const
 {
     auto value = property(CSS::PropertyID::FontVariant);
     return keyword_to_font_variant(value->to_keyword());
+}
+
+Optional<FlyString> StyleProperties::font_language_override() const
+{
+    auto value = property(CSS::PropertyID::FontLanguageOverride);
+    if (value->is_string())
+        return value->as_string().string_value();
+    return {};
+}
+
+Optional<HashMap<FlyString, IntegerOrCalculated>> StyleProperties::font_feature_settings() const
+{
+    auto value = property(PropertyID::FontFeatureSettings);
+
+    if (value->is_keyword())
+        return {}; // normal
+
+    if (value->is_value_list()) {
+        auto const& feature_tags = value->as_value_list().values();
+        HashMap<FlyString, IntegerOrCalculated> result;
+        result.ensure_capacity(feature_tags.size());
+        for (auto const& tag_value : feature_tags) {
+            auto const& feature_tag = tag_value->as_open_type_tagged();
+
+            if (feature_tag.value()->is_integer()) {
+                result.set(feature_tag.tag(), feature_tag.value()->as_integer().value());
+            } else {
+                VERIFY(feature_tag.value()->is_math());
+                result.set(feature_tag.tag(), IntegerOrCalculated { feature_tag.value()->as_math() });
+            }
+        }
+        return result;
+    }
+
+    return {};
+}
+
+Optional<HashMap<FlyString, NumberOrCalculated>> StyleProperties::font_variation_settings() const
+{
+    auto value = property(CSS::PropertyID::FontVariationSettings);
+
+    if (value->is_keyword())
+        return {}; // normal
+
+    if (value->is_value_list()) {
+        auto const& axis_tags = value->as_value_list().values();
+        HashMap<FlyString, NumberOrCalculated> result;
+        result.ensure_capacity(axis_tags.size());
+        for (auto const& tag_value : axis_tags) {
+            auto const& axis_tag = tag_value->as_open_type_tagged();
+
+            if (axis_tag.value()->is_number()) {
+                result.set(axis_tag.tag(), axis_tag.value()->as_number().value());
+            } else {
+                VERIFY(axis_tag.value()->is_math());
+                result.set(axis_tag.tag(), NumberOrCalculated { axis_tag.value()->as_math() });
+            }
+        }
+        return result;
+    }
+
+    return {};
 }
 
 CSS::GridTrackSizeList StyleProperties::grid_auto_columns() const
@@ -1097,6 +1193,12 @@ Optional<CSS::Direction> StyleProperties::direction() const
     return keyword_to_direction(value->to_keyword());
 }
 
+Optional<CSS::UnicodeBidi> StyleProperties::unicode_bidi() const
+{
+    auto value = property(CSS::PropertyID::UnicodeBidi);
+    return keyword_to_unicode_bidi(value->to_keyword());
+}
+
 Optional<CSS::MaskType> StyleProperties::mask_type() const
 {
     auto value = property(CSS::PropertyID::MaskType);
@@ -1122,7 +1224,7 @@ Color StyleProperties::stop_color() const
 
 void StyleProperties::set_math_depth(int math_depth)
 {
-    m_math_depth = math_depth;
+    m_data->m_math_depth = math_depth;
     // Make our children inherit our computed value, not our specified value.
     set_property(PropertyID::MathDepth, MathDepthStyleValue::create_integer(IntegerStyleValue::create(math_depth)));
 }
@@ -1171,8 +1273,8 @@ Vector<CounterData> StyleProperties::counter_data(PropertyID property_id) const
             if (counter.value) {
                 if (counter.value->is_integer()) {
                     data.value = AK::clamp_to<i32>(counter.value->as_integer().integer());
-                } else if (counter.value->is_calculated()) {
-                    auto maybe_int = counter.value->as_calculated().resolve_integer();
+                } else if (counter.value->is_math()) {
+                    auto maybe_int = counter.value->as_math().resolve_integer();
                     if (maybe_int.has_value())
                         data.value = AK::clamp_to<i32>(*maybe_int);
                 } else {

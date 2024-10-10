@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2022, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2022, Matthew Costa <ucosty@gmail.com>
  * Copyright (c) 2024, Jamie Mansfield <jmansfield@cadixdev.org>
  *
@@ -319,64 +319,15 @@ Tab::Tab(BrowserWindow* window, RefPtr<WebView::WebContentClient> parent_client,
         m_find_in_page->update_result_label(current_match_index, total_match_count);
     };
 
-    m_select_dropdown = new QMenu("Select Dropdown", this);
-    QObject::connect(m_select_dropdown, &QMenu::aboutToHide, this, [this]() {
-        if (!m_select_dropdown->activeAction())
-            view().select_dropdown_closed({});
-    });
-
-    view().on_request_select_dropdown = [this](Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items) {
-        m_select_dropdown->clear();
-        m_select_dropdown->setMinimumWidth(minimum_width / view().device_pixel_ratio());
-
-        auto add_menu_item = [this](Web::HTML::SelectItemOption const& item_option, bool in_option_group) {
-            QAction* action = new QAction(qstring_from_ak_string(in_option_group ? MUST(String::formatted("    {}", item_option.label)) : item_option.label), this);
-            action->setCheckable(true);
-            action->setChecked(item_option.selected);
-            action->setDisabled(item_option.disabled);
-            action->setData(QVariant(static_cast<uint>(item_option.id)));
-            QObject::connect(action, &QAction::triggered, this, &Tab::select_dropdown_action);
-            m_select_dropdown->addAction(action);
-        };
-
-        for (auto const& item : items) {
-            if (item.has<Web::HTML::SelectItemOptionGroup>()) {
-                auto const& item_option_group = item.get<Web::HTML::SelectItemOptionGroup>();
-                QAction* subtitle = new QAction(qstring_from_ak_string(item_option_group.label), this);
-                subtitle->setDisabled(true);
-                m_select_dropdown->addAction(subtitle);
-
-                for (auto const& item_option : item_option_group.items)
-                    add_menu_item(item_option, true);
-            }
-
-            if (item.has<Web::HTML::SelectItemOption>())
-                add_menu_item(item.get<Web::HTML::SelectItemOption>(), false);
-
-            if (item.has<Web::HTML::SelectItemSeparator>())
-                m_select_dropdown->addSeparator();
-        }
-
-        m_select_dropdown->exec(view().map_point_to_global_position(content_position));
-    };
-
     QObject::connect(focus_location_editor_action, &QAction::triggered, this, &Tab::focus_location_editor);
 
     view().on_received_source = [this](auto const& url, auto const& source) {
-        auto html = WebView::highlight_source(url, source);
+        auto html = WebView::highlight_source(MUST(url.to_string()), source, Syntax::Language::HTML, WebView::HighlightOutputMode::FullDocument);
         m_window->new_tab_from_content(html, Web::HTML::ActivateTab::Yes);
     };
 
-    view().on_navigate_back = [this]() {
-        back();
-    };
-
-    view().on_navigate_forward = [this]() {
-        forward();
-    };
-
-    view().on_refresh = [this]() {
-        reload();
+    view().on_inspector_requested_style_sheet_source = [this](auto const& identifier) {
+        view().request_style_sheet_source(identifier);
     };
 
     view().on_restore_window = [this]() {
@@ -518,6 +469,9 @@ Tab::Tab(BrowserWindow* window, RefPtr<WebView::WebContentClient> parent_client,
                 }
             })
             .when_rejected([this](auto const& error) {
+                if (error.is_errno() && error.code() == ECANCELED)
+                    return;
+
                 auto error_message = MUST(String::formatted("{}", error));
                 QMessageBox::warning(this, "Ladybird", qstring_from_ak_string(error_message));
             });
@@ -569,28 +523,20 @@ Tab::Tab(BrowserWindow* window, RefPtr<WebView::WebContentClient> parent_client,
         m_page_context_menu->exec(view().map_point_to_global_position(content_position));
     };
 
-    auto* open_link_action = new QAction("&Open", this);
-    open_link_action->setIcon(load_icon_from_uri("resource://icons/16x16/go-forward.png"sv));
-    QObject::connect(open_link_action, &QAction::triggered, this, [this]() {
-        open_link(m_link_context_menu_url);
-    });
-
-    auto* open_link_in_new_tab_action = new QAction("&Open in New &Tab", this);
+    auto* open_link_in_new_tab_action = new QAction("Open Link in New &Tab", this);
     open_link_in_new_tab_action->setIcon(load_icon_from_uri("resource://icons/16x16/new-tab.png"sv));
     QObject::connect(open_link_in_new_tab_action, &QAction::triggered, this, [this]() {
         open_link_in_new_tab(m_link_context_menu_url);
     });
 
-    m_link_context_menu_copy_url_action = new QAction("Copy &URL", this);
+    m_link_context_menu_copy_url_action = new QAction("Copy &Link Address", this);
     m_link_context_menu_copy_url_action->setIcon(load_icon_from_uri("resource://icons/16x16/edit-copy.png"sv));
     QObject::connect(m_link_context_menu_copy_url_action, &QAction::triggered, this, [this]() {
         copy_link_url(m_link_context_menu_url);
     });
 
     m_link_context_menu = new QMenu("Link context menu", this);
-    m_link_context_menu->addAction(open_link_action);
     m_link_context_menu->addAction(open_link_in_new_tab_action);
-    m_link_context_menu->addSeparator();
     m_link_context_menu->addAction(m_link_context_menu_copy_url_action);
     m_link_context_menu->addSeparator();
     m_link_context_menu->addAction(&m_window->inspect_dom_node_action());
@@ -606,7 +552,7 @@ Tab::Tab(BrowserWindow* window, RefPtr<WebView::WebContentClient> parent_client,
             m_link_context_menu_copy_url_action->setText("Copy &Phone Number");
             break;
         case WebView::URLType::Other:
-            m_link_context_menu_copy_url_action->setText("Copy &URL");
+            m_link_context_menu_copy_url_action->setText("Copy &Link Address");
             break;
         }
 
@@ -796,12 +742,6 @@ Tab::~Tab()
     delete m_inspector_widget;
 }
 
-void Tab::select_dropdown_action()
-{
-    QAction* action = qobject_cast<QAction*>(sender());
-    view().select_dropdown_closed(action->data().value<uint>());
-}
-
 void Tab::update_reset_zoom_button()
 {
     auto zoom_level = view().zoom_level();
@@ -863,6 +803,8 @@ void Tab::copy_link_url(URL::URL const& url)
 
 void Tab::location_edit_return_pressed()
 {
+    if (m_location_edit->text().isEmpty())
+        return;
     navigate(m_location_edit->url());
 }
 
@@ -1013,6 +955,11 @@ void Tab::set_preferred_languages(Vector<String> const& preferred_languages)
 void Tab::set_enable_do_not_track(bool enable)
 {
     m_view->set_enable_do_not_track(enable);
+}
+
+void Tab::set_enable_autoplay(bool enable)
+{
+    m_view->set_enable_autoplay(enable);
 }
 
 }

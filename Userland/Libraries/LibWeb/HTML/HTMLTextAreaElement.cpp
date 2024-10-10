@@ -72,21 +72,22 @@ void HTMLTextAreaElement::did_receive_focus()
 {
     if (!m_text_node)
         return;
-    m_text_node->invalidate_style();
+    m_text_node->invalidate_style(DOM::StyleInvalidationReason::DidReceiveFocus);
 
     if (m_placeholder_text_node)
-        m_placeholder_text_node->invalidate_style();
+        m_placeholder_text_node->invalidate_style(DOM::StyleInvalidationReason::DidReceiveFocus);
 
-    document().set_cursor_position(DOM::Position::create(realm(), *m_text_node, 0));
+    if (auto cursor = document().cursor_position(); !cursor || m_text_node != cursor->node())
+        document().set_cursor_position(DOM::Position::create(realm(), *m_text_node, 0));
 }
 
 void HTMLTextAreaElement::did_lose_focus()
 {
     if (m_text_node)
-        m_text_node->invalidate_style();
+        m_text_node->invalidate_style(DOM::StyleInvalidationReason::DidLoseFocus);
 
     if (m_placeholder_text_node)
-        m_placeholder_text_node->invalidate_style();
+        m_placeholder_text_node->invalidate_style(DOM::StyleInvalidationReason::DidLoseFocus);
 
     // The change event fires when the value is committed, if that makes sense for the control,
     // or else when the control loses focus
@@ -163,8 +164,6 @@ String HTMLTextAreaElement::value() const
 // https://html.spec.whatwg.org/multipage/form-elements.html#dom-textarea-value
 void HTMLTextAreaElement::set_value(String const& value)
 {
-    auto& realm = this->realm();
-
     // 1. Let oldAPIValue be this element's API value.
     auto old_api_value = api_value();
 
@@ -181,7 +180,7 @@ void HTMLTextAreaElement::set_value(String const& value)
             m_text_node->set_data(m_raw_value);
             update_placeholder_visibility();
 
-            document().set_cursor_position(DOM::Position::create(realm, *m_text_node, m_text_node->data().bytes().size()));
+            set_the_selection_range(m_text_node->length(), m_text_node->length());
         }
     }
 }
@@ -203,6 +202,13 @@ String HTMLTextAreaElement::api_value() const
     if (!m_api_value.has_value())
         m_api_value = Infra::normalize_newlines(m_raw_value);
     return *m_api_value;
+}
+
+// https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#concept-textarea/input-relevant-value
+WebIDL::ExceptionOr<void> HTMLTextAreaElement::set_relevant_value(String const& value)
+{
+    set_value(value);
+    return {};
 }
 
 // https://html.spec.whatwg.org/multipage/form-elements.html#dom-textarea-textlength
@@ -323,9 +329,10 @@ String HTMLTextAreaElement::selection_direction_binding() const
     return selection_direction().value();
 }
 
-void HTMLTextAreaElement::set_selection_direction_binding(String direction)
+void HTMLTextAreaElement::set_selection_direction_binding(String const& direction)
 {
-    set_selection_direction(direction);
+    // NOTE: The selectionDirection setter never returns an error for textarea elements.
+    MUST(static_cast<FormAssociatedTextControlElement&>(*this).set_selection_direction_binding(direction));
 }
 
 void HTMLTextAreaElement::create_shadow_tree_if_needed()
@@ -453,13 +460,15 @@ void HTMLTextAreaElement::queue_firing_input_event()
     });
 }
 
-void HTMLTextAreaElement::selection_was_changed()
+void HTMLTextAreaElement::selection_was_changed(size_t selection_start, size_t selection_end)
 {
-    auto selection = document().get_selection();
-    if (!selection || selection->range_count() == 0)
+    if (!m_text_node || !document().cursor_position() || document().cursor_position()->node() != m_text_node)
         return;
 
-    MUST(selection->set_base_and_extent(*m_text_node, selection_start().value(), *m_text_node, selection_end().value()));
+    document().set_cursor_position(DOM::Position::create(realm(), *m_text_node, selection_end));
+
+    if (auto selection = document().get_selection())
+        MUST(selection->set_base_and_extent(*m_text_node, selection_start, *m_text_node, selection_end));
 }
 
 }

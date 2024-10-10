@@ -1,5 +1,3 @@
-include(${SerenityOS_SOURCE_DIR}/Meta/CMake/unicode_data.cmake)
-
 set(SOURCES
     CharacterTypes.cpp
     Collator.cpp
@@ -7,7 +5,6 @@ set(SOURCES
     DateTimeFormat.cpp
     DisplayNames.cpp
     DurationFormat.cpp
-    Emoji.cpp
     ICU.cpp
     IDNA.cpp
     ListFormat.cpp
@@ -20,7 +17,6 @@ set(SOURCES
     String.cpp
     TimeZone.cpp
     UnicodeKeywords.cpp
-    ${UNICODE_DATA_SOURCES}
 )
 
 set(GENERATED_SOURCES ${CURRENT_LIB_GENERATED})

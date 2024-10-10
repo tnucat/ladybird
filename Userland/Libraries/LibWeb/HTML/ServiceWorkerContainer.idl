@@ -9,7 +9,8 @@ interface ServiceWorkerContainer : EventTarget {
     [FIXME] readonly attribute ServiceWorker? controller;
     [FIXME] readonly attribute Promise<ServiceWorkerRegistration> ready;
 
-    [FIXME, NewObject] Promise<ServiceWorkerRegistration> register((TrustedScriptURL or USVString) scriptURL, optional RegistrationOptions options = {});
+    // FIXME: [NewObject] Promise<ServiceWorkerRegistration> register((TrustedScriptURL or USVString) scriptURL, optional RegistrationOptions options = {});
+    [NewObject, ImplementedAs=register_] Promise<ServiceWorkerRegistration> register(USVString scriptURL, optional RegistrationOptions options = {});
 
     [FIXME, NewObject] Promise<(ServiceWorkerRegistration or undefined)> getRegistration(optional USVString clientURL = "");
     [FIXME, NewObject] Promise<FrozenArray<ServiceWorkerRegistration>> getRegistrations();
@@ -17,9 +18,9 @@ interface ServiceWorkerContainer : EventTarget {
     [FIXME] undefined startMessages();
 
     // events
-    [FIXME] attribute EventHandler oncontrollerchange;
-    [FIXME] attribute EventHandler onmessage; // event.source of message events is ServiceWorker object
-    [FIXME] attribute EventHandler onmessageerror;
+    attribute EventHandler oncontrollerchange;
+    attribute EventHandler onmessage; // event.source of message events is ServiceWorker object
+    attribute EventHandler onmessageerror;
 };
 
 dictionary RegistrationOptions {

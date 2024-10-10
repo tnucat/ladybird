@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2022, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -28,12 +28,6 @@ PlatformObject::~PlatformObject() = default;
 JS::Realm& PlatformObject::realm() const
 {
     return shape().realm();
-}
-
-// FIXME: remove this
-HTML::Window& PlatformObject::global_object() const
-{
-    return verify_cast<HTML::Window>(realm().global_object());
 }
 
 // https://webidl.spec.whatwg.org/#dfn-named-property-visibility

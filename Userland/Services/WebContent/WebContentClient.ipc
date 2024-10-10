@@ -5,15 +5,18 @@
 #include <LibWeb/Cookie/Cookie.h>
 #include <LibWeb/Cookie/ParsedCookie.h>
 #include <LibWeb/CSS/Selector.h>
+#include <LibWeb/CSS/StyleSheetIdentifier.h>
 #include <LibWeb/HTML/ActivateTab.h>
 #include <LibWeb/HTML/AudioPlayState.h>
 #include <LibWeb/HTML/FileFilter.h>
 #include <LibWeb/HTML/SelectedFile.h>
 #include <LibWeb/HTML/SelectItem.h>
 #include <LibWeb/HTML/WebViewHints.h>
+#include <LibWeb/Page/EventResult.h>
 #include <LibWeb/Page/Page.h>
 #include <LibWebView/Attribute.h>
 #include <LibWebView/ProcessHandle.h>
+#include <LibWebView/PageInfo.h>
 
 endpoint WebContentClient
 {
@@ -54,14 +57,20 @@ endpoint WebContentClient
     did_finish_editing_dom_node(u64 page_id, Optional<i32> node_id) =|
     did_get_dom_node_html(u64 page_id, String html) =|
 
+    inspector_did_list_style_sheets(u64 page_id, Vector<Web::CSS::StyleSheetIdentifier> style_sheets) =|
+    inspector_did_request_style_sheet_source(u64 page_id, Web::CSS::StyleSheetIdentifier identifier) =|
+    did_request_style_sheet_source(u64 page_id, Web::CSS::StyleSheetIdentifier identifier, String source) =|
+
     did_take_screenshot(u64 page_id, Gfx::ShareableBitmap screenshot) =|
 
+    did_get_internal_page_info(u64 page_id, WebView::PageInfoType type, String info) =|
+
     did_change_favicon(u64 page_id, Gfx::ShareableBitmap favicon) =|
-    did_request_all_cookies(u64 page_id, URL::URL url) => (Vector<Web::Cookie::Cookie> cookies)
-    did_request_named_cookie(u64 page_id, URL::URL url, String name) => (Optional<Web::Cookie::Cookie> cookie)
-    did_request_cookie(u64 page_id, URL::URL url, Web::Cookie::Source source) => (String cookie)
-    did_set_cookie(u64 page_id, URL::URL url, Web::Cookie::ParsedCookie cookie, Web::Cookie::Source source) => ()
-    did_update_cookie(u64 page_id, Web::Cookie::Cookie cookie) =|
+    did_request_all_cookies(URL::URL url) => (Vector<Web::Cookie::Cookie> cookies)
+    did_request_named_cookie(URL::URL url, String name) => (Optional<Web::Cookie::Cookie> cookie)
+    did_request_cookie(URL::URL url, Web::Cookie::Source source) => (String cookie)
+    did_set_cookie(URL::URL url, Web::Cookie::ParsedCookie cookie, Web::Cookie::Source source) => ()
+    did_update_cookie(Web::Cookie::Cookie cookie) =|
     did_update_resource_count(u64 page_id, i32 count_waiting) =|
     did_request_new_web_view(u64 page_id, Web::HTML::ActivateTab activate_tab, Web::HTML::WebViewHints hints, Optional<u64> page_index) => (String handle)
     did_request_activate_tab(u64 page_id) =|
@@ -76,7 +85,7 @@ endpoint WebContentClient
     did_request_color_picker(u64 page_id, Color current_color) =|
     did_request_file_picker(u64 page_id, Web::HTML::FileFilter accepted_file_types, Web::HTML::AllowMultipleFiles allow_multiple_files) =|
     did_request_select_dropdown(u64 page_id, Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items) =|
-    did_finish_handling_input_event(u64 page_id, bool event_was_accepted) =|
+    did_finish_handling_input_event(u64 page_id, Web::EventResult event_result) =|
     did_change_theme_color(u64 page_id, Gfx::Color color) =|
     did_insert_clipboard_entry(u64 page_id, String data, String presentation_style, String mime_type) =|
     did_update_navigation_buttons_state(u64 page_id, bool back_enabled, bool forward_enabled) =|
@@ -87,7 +96,7 @@ endpoint WebContentClient
     did_output_js_console_message(u64 page_id, i32 message_index) =|
     did_get_js_console_messages(u64 page_id, i32 start_index, Vector<ByteString> message_types, Vector<ByteString> messages) =|
 
-    did_finish_text_test(u64 page_id) =|
+    did_finish_text_test(u64 page_id, String text) =|
 
     did_find_in_page(u64 page_id, size_t current_match_index, Optional<size_t> total_match_count) =|
 
@@ -100,6 +109,7 @@ endpoint WebContentClient
     inspector_did_add_dom_node_attributes(u64 page_id, i32 node_id, Vector<WebView::Attribute> attributes) =|
     inspector_did_replace_dom_node_attribute(u64 page_id, i32 node_id, size_t attribute_index, Vector<WebView::Attribute> replacement_attributes) =|
     inspector_did_request_dom_tree_context_menu(u64 page_id, i32 node_id, Gfx::IntPoint position, String type, Optional<String> tag, Optional<size_t> attribute_index) =|
+    inspector_did_request_cookie_context_menu(u64 page_id, size_t cookie_index, Gfx::IntPoint position) =|
     inspector_did_execute_console_script(u64 page_id, String script) =|
     inspector_did_export_inspector_html(u64 page_id, String html) =|
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2021-2023, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2021, Tobias Christiansen <tobyase@serenityos.org>
  * Copyright (c) 2022-2023, Sam Atkins <atkinssj@serenityos.org>
  *
@@ -17,7 +17,7 @@
 #include <LibWeb/CSS/StyleValues/BorderRadiusStyleValue.h>
 #include <LibWeb/CSS/StyleValues/CSSColorValue.h>
 #include <LibWeb/CSS/StyleValues/CSSKeywordValue.h>
-#include <LibWeb/CSS/StyleValues/CalculatedStyleValue.h>
+#include <LibWeb/CSS/StyleValues/CSSMathValue.h>
 #include <LibWeb/CSS/StyleValues/EdgeStyleValue.h>
 #include <LibWeb/CSS/StyleValues/GridTrackPlacementStyleValue.h>
 #include <LibWeb/CSS/StyleValues/GridTrackSizeListStyleValue.h>
@@ -520,6 +520,24 @@ RefPtr<CSSStyleValue const> ResolvedCSSStyleDeclaration::style_value_for_propert
         dbgln_if(LIBWEB_CSS_DEBUG, "Computed style for custom properties was requested (?)");
         return nullptr;
     default:
+        // For grid-template-columns and grid-template-rows the resolved value is the used value.
+        // https://www.w3.org/TR/css-grid-2/#resolved-track-list-standalone
+        if (property_id == PropertyID::GridTemplateColumns) {
+            if (layout_node.paintable() && layout_node.paintable()->is_paintable_box()) {
+                auto const& paintable_box = verify_cast<Painting::PaintableBox const>(*layout_node.paintable());
+                if (auto used_values_for_grid_template_columns = paintable_box.used_values_for_grid_template_columns()) {
+                    return used_values_for_grid_template_columns;
+                }
+            }
+        } else if (property_id == PropertyID::GridTemplateRows) {
+            if (layout_node.paintable() && layout_node.paintable()->is_paintable_box()) {
+                auto const& paintable_box = verify_cast<Painting::PaintableBox const>(*layout_node.paintable());
+                if (auto used_values_for_grid_template_rows = paintable_box.used_values_for_grid_template_rows()) {
+                    return used_values_for_grid_template_rows;
+                }
+            }
+        }
+
         if (!property_is_shorthand(property_id))
             return get_computed_value(property_id);
 

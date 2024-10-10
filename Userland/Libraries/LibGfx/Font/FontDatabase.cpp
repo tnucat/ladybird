@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2020, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -11,7 +11,6 @@
 #include <LibCore/Resource.h>
 #include <LibGfx/Font/Font.h>
 #include <LibGfx/Font/FontDatabase.h>
-#include <LibGfx/Font/OpenType/Typeface.h>
 #include <LibGfx/Font/ScaledFont.h>
 #include <LibGfx/Font/WOFF/Loader.h>
 
@@ -53,9 +52,9 @@ void FontDatabase::load_all_fonts_from_uri(StringView uri)
     root->for_each_descendant_file([this](Core::Resource const& resource) -> IterationDecision {
         auto uri = resource.uri();
         auto path = LexicalPath(uri.bytes_as_string_view());
-        if (path.has_extension(".ttf"sv)) {
+        if (path.has_extension(".ttf"sv) || path.has_extension(".ttc"sv)) {
             // FIXME: What about .otf
-            if (auto font_or_error = OpenType::Typeface::try_load_from_resource(resource); !font_or_error.is_error()) {
+            if (auto font_or_error = Typeface::try_load_from_resource(resource); !font_or_error.is_error()) {
                 auto font = font_or_error.release_value();
                 auto& family = m_private->typeface_by_family.ensure(font->family(), [] {
                     return Vector<NonnullRefPtr<Typeface>> {};
@@ -78,7 +77,6 @@ void FontDatabase::load_all_fonts_from_uri(StringView uri)
 FontDatabase::FontDatabase()
     : m_private(make<Private>())
 {
-    load_all_fonts_from_uri("resource://fonts"sv);
 }
 
 RefPtr<Gfx::Font> FontDatabase::get(FlyString const& family, float point_size, unsigned weight, unsigned width, unsigned slope)
@@ -88,18 +86,6 @@ RefPtr<Gfx::Font> FontDatabase::get(FlyString const& family, float point_size, u
         return nullptr;
     for (auto const& typeface : it->value) {
         if (typeface->weight() == weight && typeface->width() == width && typeface->slope() == slope)
-            return typeface->scaled_font(point_size);
-    }
-    return nullptr;
-}
-
-RefPtr<Gfx::Font> FontDatabase::get(FlyString const& family, FlyString const& variant, float point_size)
-{
-    auto it = m_private->typeface_by_family.find(family);
-    if (it == m_private->typeface_by_family.end())
-        return nullptr;
-    for (auto const& typeface : it->value) {
-        if (typeface->variant() == variant)
             return typeface->scaled_font(point_size);
     }
     return nullptr;

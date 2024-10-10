@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2022, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2022, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
 #pragma once
 
+#include <LibWeb/CSS/StyleValues/GridTrackSizeListStyleValue.h>
 #include <LibWeb/Painting/BackgroundPainting.h>
 #include <LibWeb/Painting/BorderPainting.h>
 #include <LibWeb/Painting/BorderRadiusCornerClipper.h>
@@ -128,7 +129,7 @@ public:
     DOM::Node const* dom_node() const { return layout_box().dom_node(); }
     DOM::Node* dom_node() { return layout_box().dom_node(); }
 
-    virtual void set_needs_display() override;
+    virtual void set_needs_display(InvalidateDisplayList = InvalidateDisplayList::Yes) override;
 
     virtual void apply_scroll_offset(PaintContext&, PaintPhase) const override;
     virtual void reset_scroll_offset(PaintContext&, PaintPhase) const override;
@@ -208,7 +209,30 @@ public:
 
     virtual bool wants_mouse_events() const override;
 
+    CSSPixelRect transform_box_rect() const;
     virtual void resolve_paint_properties() override;
+
+    RefPtr<ScrollFrame const> nearest_scroll_frame() const;
+
+    CSSPixelRect border_box_rect_relative_to_nearest_scrollable_ancestor() const;
+    PaintableBox const* nearest_scrollable_ancestor() const;
+
+    struct StickyInsets {
+        Optional<CSSPixels> top;
+        Optional<CSSPixels> right;
+        Optional<CSSPixels> bottom;
+        Optional<CSSPixels> left;
+    };
+    StickyInsets const& sticky_insets() const { return *m_sticky_insets; }
+    void set_sticky_insets(OwnPtr<StickyInsets> sticky_insets) { m_sticky_insets = move(sticky_insets); }
+
+    [[nodiscard]] bool is_scrollable() const;
+
+    void set_used_values_for_grid_template_columns(RefPtr<CSS::GridTrackSizeListStyleValue> style_value) { m_used_values_for_grid_template_columns = move(style_value); }
+    RefPtr<CSS::GridTrackSizeListStyleValue> const& used_values_for_grid_template_columns() const { return m_used_values_for_grid_template_columns; }
+
+    void set_used_values_for_grid_template_rows(RefPtr<CSS::GridTrackSizeListStyleValue> style_value) { m_used_values_for_grid_template_rows = move(style_value); }
+    RefPtr<CSS::GridTrackSizeListStyleValue> const& used_values_for_grid_template_rows() const { return m_used_values_for_grid_template_rows; }
 
 protected:
     explicit PaintableBox(Layout::Box const&);
@@ -268,6 +292,11 @@ private:
     Optional<ScrollDirection> m_scroll_thumb_dragging_direction;
 
     ResolvedBackground m_resolved_background;
+
+    OwnPtr<StickyInsets> m_sticky_insets;
+
+    RefPtr<CSS::GridTrackSizeListStyleValue> m_used_values_for_grid_template_columns;
+    RefPtr<CSS::GridTrackSizeListStyleValue> m_used_values_for_grid_template_rows;
 };
 
 class PaintableWithLines : public PaintableBox {

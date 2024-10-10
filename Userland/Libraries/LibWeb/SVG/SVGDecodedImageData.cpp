@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2023, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -38,10 +38,10 @@ ErrorOr<JS::NonnullGCPtr<SVGDecodedImageData>> SVGDecodedImageData::create(JS::R
     auto navigation_params = navigable->heap().allocate_without_realm<HTML::NavigationParams>();
     navigation_params->navigable = navigable;
     navigation_params->response = response;
-    navigation_params->origin = HTML::Origin {};
+    navigation_params->origin = URL::Origin {};
     navigation_params->policy_container = HTML::PolicyContainer {};
     navigation_params->final_sandboxing_flag_set = HTML::SandboxingFlagSet {};
-    navigation_params->cross_origin_opener_policy = HTML::CrossOriginOpenerPolicy {};
+    navigation_params->opener_policy = HTML::OpenerPolicy {};
 
     // FIXME: Use Navigable::navigate() instead of manually replacing the navigable's document.
     auto document = DOM::Document::create_and_initialize(DOM::Document::Type::HTML, "text/html"_string, navigation_params).release_value_but_fixme_should_propagate_errors();

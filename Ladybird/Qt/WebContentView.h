@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2022-2023, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2023, Linus Groh <linusg@serenityos.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
@@ -22,6 +22,7 @@
 #include <LibWeb/HTML/ActivateTab.h>
 #include <LibWebView/ViewImplementation.h>
 #include <QAbstractScrollArea>
+#include <QMenu>
 #include <QTimer>
 #include <QUrl>
 
@@ -71,8 +72,6 @@ public:
     virtual void focusOutEvent(QFocusEvent*) override;
     virtual bool event(QEvent*) override;
 
-    ErrorOr<String> dump_layout_tree();
-
     void set_viewport_rect(Gfx::IntRect);
     void set_window_size(Gfx::IntSize);
     void set_window_position(Gfx::IntPoint);
@@ -87,6 +86,9 @@ public:
     using ViewImplementation::client;
 
     QPoint map_point_to_global_position(Gfx::IntPoint) const;
+
+public slots:
+    void select_dropdown_action();
 
 signals:
     void urls_dropped(QList<QUrl> const&);
@@ -119,6 +121,8 @@ private:
     bool m_should_show_line_box_borders { false };
 
     Gfx::IntSize m_viewport_size;
+
+    QMenu* m_select_dropdown { nullptr };
 };
 
 }

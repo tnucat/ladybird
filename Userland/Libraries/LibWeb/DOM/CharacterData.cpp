@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2022, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2022, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -128,8 +128,10 @@ WebIDL::ExceptionOr<void> CharacterData::replace_data(size_t offset, size_t coun
 
     document().set_needs_layout();
 
-    if (m_segmenter)
-        m_segmenter->set_segmented_text(m_data);
+    if (m_grapheme_segmenter)
+        m_grapheme_segmenter->set_segmented_text(m_data);
+    if (m_word_segmenter)
+        m_word_segmenter->set_segmented_text(m_data);
 
     return {};
 }
@@ -155,14 +157,24 @@ WebIDL::ExceptionOr<void> CharacterData::delete_data(size_t offset, size_t count
     return replace_data(offset, count, String {});
 }
 
-Unicode::Segmenter& CharacterData::segmenter()
+Unicode::Segmenter& CharacterData::grapheme_segmenter() const
 {
-    if (!m_segmenter) {
-        m_segmenter = Unicode::Segmenter::create(Unicode::SegmenterGranularity::Grapheme);
-        m_segmenter->set_segmented_text(m_data);
+    if (!m_grapheme_segmenter) {
+        m_grapheme_segmenter = document().grapheme_segmenter().clone();
+        m_grapheme_segmenter->set_segmented_text(m_data);
     }
 
-    return *m_segmenter;
+    return *m_grapheme_segmenter;
+}
+
+Unicode::Segmenter& CharacterData::word_segmenter() const
+{
+    if (!m_word_segmenter) {
+        m_word_segmenter = document().word_segmenter().clone();
+        m_word_segmenter->set_segmented_text(m_data);
+    }
+
+    return *m_word_segmenter;
 }
 
 }

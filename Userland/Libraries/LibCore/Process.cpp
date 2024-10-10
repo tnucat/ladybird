@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2021, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2022-2023, MacDue <macdue@dueutil.tech>
  * Copyright (c) 2023-2024, Sam Atkins <atkinssj@serenityos.org>
  * Copyright (c) 2024, Tim Flynn <trflynn89@serenityos.org>
@@ -299,7 +299,7 @@ ErrorOr<bool> Process::is_being_debugged()
 #    endif
 #endif
     // FIXME: Implement this for more platforms.
-    return Error::from_string_view("Platform does not support checking for debugger"sv);
+    return Error::from_string_literal("Platform does not support checking for debugger");
 }
 
 // Forces the process to sleep until a debugger is attached, then breaks.

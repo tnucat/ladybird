@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2021-2022, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2021-2022, Kenneth Myhra <kennethmyhra@serenityos.org>
  * Copyright (c) 2021-2024, Sam Atkins <atkinssj@serenityos.org>
  * Copyright (c) 2022, Matthias Zimmerman <matthias291999@gmail.com>
@@ -528,9 +528,9 @@ ErrorOr<int> anon_create([[maybe_unused]] size_t size, [[maybe_unused]] int opti
         return Error::from_errno(saved_errno);
     }
 #elif defined(AK_OS_BSD_GENERIC) || defined(AK_OS_EMSCRIPTEN) || defined(AK_OS_HAIKU)
-    struct timespec time;
-    clock_gettime(CLOCK_REALTIME, &time);
-    auto name = ByteString::formatted("/shm-{}{}", (unsigned long)time.tv_sec, (unsigned long)time.tv_nsec);
+    static size_t shared_memory_id = 0;
+
+    auto name = ByteString::formatted("/shm-{}-{}", getpid(), shared_memory_id++);
     fd = shm_open(name.characters(), O_RDWR | O_CREAT | options, 0600);
 
     if (shm_unlink(name.characters()) == -1) {
@@ -1751,6 +1751,11 @@ unsigned hardware_concurrency()
     return sysconf(_SC_NPROCESSORS_ONLN);
 }
 
+u64 physical_memory_bytes()
+{
+    return sysconf(_SC_PHYS_PAGES) * PAGE_SIZE;
+}
+
 ErrorOr<String> resolve_executable_from_environment(StringView filename, int flags)
 {
     if (filename.is_empty())
@@ -1825,16 +1830,16 @@ ErrorOr<ByteString> current_executable_path()
     for (int32 cookie { 0 }; get_next_image_info(B_CURRENT_TEAM, &cookie, &info) == B_OK && info.type != B_APP_IMAGE;)
         ;
     if (info.type != B_APP_IMAGE)
-        return Error::from_string_view("current_executable_path() failed"sv);
+        return Error::from_string_literal("current_executable_path() failed");
     if (sizeof(info.name) > sizeof(path))
         return Error::from_errno(ENAMETOOLONG);
     strlcpy(path, info.name, sizeof(path) - 1);
 #elif defined(AK_OS_EMSCRIPTEN)
-    return Error::from_string_view("current_executable_path() unknown on this platform"sv);
+    return Error::from_string_literal("current_executable_path() unknown on this platform");
 #else
 #    warning "Not sure how to get current_executable_path on this platform!"
     // GetModuleFileName on Windows, unsure about OpenBSD.
-    return Error::from_string_view("current_executable_path unknown"sv);
+    return Error::from_string_literal("current_executable_path unknown");
 #endif
     path[sizeof(path) - 1] = '\0';
     return ByteString { path, strlen(path) };

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2022-2023, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2023, Linus Groh <linusg@serenityos.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
@@ -10,7 +10,6 @@
 #include <AK/String.h>
 #include <LibCore/Resource.h>
 #include <LibCore/StandardPaths.h>
-#include <LibGfx/Font/Emoji.h>
 #include <LibGfx/Font/FontDatabase.h>
 
 #ifdef USE_FONTCONFIG
@@ -33,11 +32,6 @@ FontPlugin::FontPlugin(bool is_layout_test_mode)
     for (auto const& path : Core::StandardPaths::font_directories().release_value_but_fixme_should_propagate_errors())
         Gfx::FontDatabase::the().load_all_fonts_from_uri(MUST(String::formatted("file://{}", path)));
 
-    auto emoji_path = MUST(Core::Resource::load_from_uri("resource://emoji"sv));
-    VERIFY(emoji_path->is_directory());
-
-    Gfx::Emoji::set_emoji_lookup_path(emoji_path->filesystem_path());
-
     update_generic_fonts();
 
     auto default_font_name = generic_font_name(Web::Platform::GenericFont::UiSansSerif);
@@ -59,6 +53,23 @@ Gfx::Font& FontPlugin::default_font()
 Gfx::Font& FontPlugin::default_fixed_width_font()
 {
     return *m_default_fixed_width_font;
+}
+
+RefPtr<Gfx::Font> FontPlugin::default_emoji_font(float point_size)
+{
+    FlyString default_emoji_font_name;
+
+    if (m_is_layout_test_mode) {
+        default_emoji_font_name = "Noto Emoji"_fly_string;
+    } else {
+#ifdef AK_OS_MACOS
+        default_emoji_font_name = "Apple Color Emoji"_fly_string;
+#else
+        default_emoji_font_name = "Noto Color Emoji"_fly_string;
+#endif
+    }
+
+    return Gfx::FontDatabase::the().get(default_emoji_font_name, point_size, 400, Gfx::FontWidth::Normal, 0);
 }
 
 #ifdef USE_FONTCONFIG

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2020-2023, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2021-2023, Linus Groh <linusg@serenityos.org>
  * Copyright (c) 2021-2023, Luke Wilde <lukew@serenityos.org>
  * Copyright (c) 2022, Ali Mohammad Pur <mpfard@serenityos.org>
@@ -94,6 +94,7 @@ static bool is_platform_object(Type const& type)
         "TextMetrics"sv,
         "TextTrack"sv,
         "URLSearchParams"sv,
+        "VTTRegion"sv,
         "VideoTrack"sv,
         "VideoTrackList"sv,
         "WebGLRenderingContext"sv,
@@ -4189,6 +4190,7 @@ static void generate_using_namespace_definitions(SourceGenerator& generator)
     using namespace Web::DOMURL;
     using namespace Web::Encoding;
     using namespace Web::EntriesAPI;
+    using namespace Web::EventTiming;
     using namespace Web::Fetch;
     using namespace Web::FileAPI;
     using namespace Web::Geometry;
@@ -4197,6 +4199,7 @@ static void generate_using_namespace_definitions(SourceGenerator& generator)
     using namespace Web::IndexedDB;
     using namespace Web::Internals;
     using namespace Web::IntersectionObserver;
+    using namespace Web::MediaCapabilitiesAPI;
     using namespace Web::NavigationTiming;
     using namespace Web::PerformanceTimeline;
     using namespace Web::RequestIdleCallback;
@@ -4211,6 +4214,7 @@ static void generate_using_namespace_definitions(SourceGenerator& generator)
     using namespace Web::WebAudio;
     using namespace Web::WebGL;
     using namespace Web::WebIDL;
+    using namespace Web::WebVTT;
     using namespace Web::XHR;
 )~~~"sv);
 }
@@ -4403,6 +4407,27 @@ private:
 )~~~");
 }
 
+// https://webidl.spec.whatwg.org/#define-the-operations
+static void define_the_operations(SourceGenerator& generator, HashMap<ByteString, Vector<Function&>> const& operations)
+{
+    for (auto const& operation : operations) {
+        auto function_generator = generator.fork();
+        function_generator.set("function.name", operation.key);
+        function_generator.set("function.name:snakecase", make_input_acceptable_cpp(operation.key.to_snakecase()));
+        function_generator.set("function.length", ByteString::number(get_shortest_function_length(operation.value)));
+
+        // NOTE: This assumes that every function in the overload set has the same attribute set.
+        if (operation.value[0].extended_attributes.contains("LegacyUnforgable"sv))
+            function_generator.set("function.attributes", "JS::Attribute::Enumerable");
+        else
+            function_generator.set("function.attributes", "JS::Attribute::Writable | JS::Attribute::Enumerable | JS::Attribute::Configurable");
+
+        function_generator.append(R"~~~(
+    define_native_function(realm, "@function.name@", @function.name:snakecase@, @function.length@, @function.attributes@);
+)~~~");
+    }
+}
+
 void generate_constructor_implementation(IDL::Interface const& interface, StringBuilder& builder)
 {
     SourceGenerator generator { builder };
@@ -4517,17 +4542,7 @@ void @constructor_class@::initialize(JS::Realm& realm)
 )~~~");
     }
 
-    // https://webidl.spec.whatwg.org/#es-operations
-    for (auto const& overload_set : interface.static_overload_sets) {
-        auto function_generator = generator.fork();
-        function_generator.set("function.name", overload_set.key);
-        function_generator.set("function.name:snakecase", make_input_acceptable_cpp(overload_set.key.to_snakecase()));
-        function_generator.set("function.length", ByteString::number(get_shortest_function_length(overload_set.value)));
-
-        function_generator.append(R"~~~(
-    define_native_function(realm, "@function.name@", @function.name:snakecase@, @function.length@, default_attributes);
-)~~~");
-    }
+    define_the_operations(generator, interface.static_overload_sets);
 
     generator.append(R"~~~(
 }
@@ -4642,6 +4657,7 @@ void generate_prototype_implementation(IDL::Interface const& interface, StringBu
 #include <LibJS/Runtime/TypedArray.h>
 #include <LibJS/Runtime/Value.h>
 #include <LibJS/Runtime/ValueInlines.h>
+#include <LibURL/Origin.h>
 #include <LibWeb/Bindings/@prototype_class@.h>
 #include <LibWeb/Bindings/ExceptionOrUtils.h>
 #include <LibWeb/Bindings/Intrinsics.h>
@@ -4651,7 +4667,6 @@ void generate_prototype_implementation(IDL::Interface const& interface, StringBu
 #include <LibWeb/DOM/NodeFilter.h>
 #include <LibWeb/DOM/Range.h>
 #include <LibWeb/HTML/Numbers.h>
-#include <LibWeb/HTML/Origin.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WindowProxy.h>
@@ -4916,6 +4931,7 @@ void generate_global_mixin_implementation(IDL::Interface const& interface, Strin
 #include <LibJS/Runtime/TypedArray.h>
 #include <LibJS/Runtime/Value.h>
 #include <LibJS/Runtime/ValueInlines.h>
+#include <LibURL/Origin.h>
 #include <LibWeb/Bindings/@class_name@.h>
 #include <LibWeb/Bindings/@prototype_name@.h>
 #include <LibWeb/Bindings/ExceptionOrUtils.h>
@@ -4925,7 +4941,6 @@ void generate_global_mixin_implementation(IDL::Interface const& interface, Strin
 #include <LibWeb/DOM/IDLEventListener.h>
 #include <LibWeb/DOM/NodeFilter.h>
 #include <LibWeb/DOM/Range.h>
-#include <LibWeb/HTML/Origin.h>
 #include <LibWeb/HTML/Scripting/Environments.h>
 #include <LibWeb/HTML/Window.h>
 #include <LibWeb/HTML/WindowProxy.h>

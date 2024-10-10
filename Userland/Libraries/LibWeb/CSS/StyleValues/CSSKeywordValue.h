@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2020, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2021, Tobias Christiansen <tobyase@serenityos.org>
  * Copyright (c) 2021-2024, Sam Atkins <sam@ladybird.org>
  * Copyright (c) 2022-2023, MacDue <macdue@dueutil.tech>
@@ -32,6 +32,10 @@ public:
         case Keyword::Revert: {
             static ValueComparingNonnullRefPtr<CSSKeywordValue> const revert_instance = adopt_ref(*new (nothrow) CSSKeywordValue(Keyword::Revert));
             return revert_instance;
+        }
+        case Keyword::RevertLayer: {
+            static ValueComparingNonnullRefPtr<CSSKeywordValue> const revert_layer_instance = adopt_ref(*new (nothrow) CSSKeywordValue(Keyword::RevertLayer));
+            return revert_layer_instance;
         }
         case Keyword::Unset: {
             static ValueComparingNonnullRefPtr<CSSKeywordValue> const unset_instance = adopt_ref(*new (nothrow) CSSKeywordValue(Keyword::Unset));

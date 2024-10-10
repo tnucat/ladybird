@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2022, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -15,7 +15,7 @@ class LineBuilder {
     AK_MAKE_NONMOVABLE(LineBuilder);
 
 public:
-    LineBuilder(InlineFormattingContext&, LayoutState&, LayoutState::UsedValues& containing_block_used_values);
+    LineBuilder(InlineFormattingContext&, LayoutState&, LayoutState::UsedValues& containing_block_used_values, CSS::Direction);
     ~LineBuilder();
 
     enum class ForcedBreak {
@@ -63,6 +63,7 @@ private:
     CSSPixels m_current_y { 0 };
     CSSPixels m_max_height_on_current_line { 0 };
     CSSPixels m_text_indent { 0 };
+    CSS::Direction m_direction { CSS::Direction::Ltr };
 
     bool m_last_line_needs_update { false };
 };

@@ -1,5 +1,5 @@
 import("//Meta/gn/build/compiled_action.gni")
-import("//Meta/gn/build/embed_as_string_view.gni")
+import("//Meta/gn/build/embed_as_string.gni")
 import("generate_idl_bindings.gni")
 import("idl_files.gni")
 
@@ -220,28 +220,28 @@ compiled_action("generate_css_keyword") {
   ]
 }
 
-embed_as_string_view("generate_default_stylesheet_source") {
+embed_as_string("generate_default_stylesheet_source") {
   input = "CSS/Default.css"
   output = "$target_gen_dir/CSS/DefaultStyleSheetSource.cpp"
   variable_name = "default_stylesheet_source"
   namespace = "Web::CSS"
 }
 
-embed_as_string_view("generate_mathml_stylesheet_source") {
+embed_as_string("generate_mathml_stylesheet_source") {
   input = "MathML/Default.css"
   output = "$target_gen_dir/MathML/MathMLStyleSheetSource.cpp"
   variable_name = "mathml_stylesheet_source"
   namespace = "Web::CSS"
 }
 
-embed_as_string_view("generate_svg_stylesheet_source") {
+embed_as_string("generate_svg_stylesheet_source") {
   input = "SVG/Default.css"
   output = "$target_gen_dir/SVG/SVGStyleSheetSource.cpp"
   variable_name = "svg_stylesheet_source"
   namespace = "Web::CSS"
 }
 
-embed_as_string_view("generate_quirks_mode_stylesheet_source") {
+embed_as_string("generate_quirks_mode_stylesheet_source") {
   input = "CSS/QuirksMode.css"
   output = "$target_gen_dir/CSS/QuirksModeStyleSheetSource.cpp"
   variable_name = "quirks_mode_stylesheet_source"
@@ -277,6 +277,7 @@ source_set("all_generated") {
 config("configs") {
   include_dirs = [
     "//Userland/Libraries",
+    "//Userland/Services",  # FIXME: BackingStoreManager lives in WebContent
     "$target_gen_dir/..",
   ]
   configs = [ "//AK:ak_headers" ]
@@ -303,6 +304,8 @@ shared_library("LibWeb") {
            "DOMParsing",
            "DOMURL",
            "Encoding",
+           "EntriesAPI",
+           "EventTiming",
            "Fetch",
            "FileAPI",
            "Geometry",
@@ -315,6 +318,7 @@ shared_library("LibWeb") {
            "Layout",
            "Loader",
            "MathML",
+           "MediaCapabilitiesAPI",
            "MimeSniff",
            "MixedContent",
            "NavigationTiming",
@@ -330,6 +334,8 @@ shared_library("LibWeb") {
            "SVG",
            "SecureContexts",
            "Selection",
+           "ServiceWorker",
+           "StorageAPI",
            "Streams",
            "UIEvents",
            "UserTiming",
@@ -339,12 +345,14 @@ shared_library("LibWeb") {
            "WebGL",
            "WebIDL",
            "WebSockets",
+           "WebVTT",
            "Worker",
            "XHR",
            "XLink",
            "XML",
            "//AK",
-           "//Userland/Libraries/LibAudio",
+           "//Meta/gn/build/libs/skia",
+           "//Meta/gn/build/libs/vulkan",
            "//Userland/Libraries/LibCore",
            "//Userland/Libraries/LibCrypto",
            "//Userland/Libraries/LibGfx",
@@ -352,14 +360,14 @@ shared_library("LibWeb") {
            "//Userland/Libraries/LibIDL",
            "//Userland/Libraries/LibIPC",
            "//Userland/Libraries/LibJS",
-           "//Userland/Libraries/LibLocale",
+           "//Userland/Libraries/LibMedia",
            "//Userland/Libraries/LibRegex",
+           "//Userland/Libraries/LibRequests",
            "//Userland/Libraries/LibSyntax",
            "//Userland/Libraries/LibTLS",
            "//Userland/Libraries/LibTextCodec",
            "//Userland/Libraries/LibURL",
            "//Userland/Libraries/LibUnicode",
-           "//Userland/Libraries/LibVideo",
            "//Userland/Libraries/LibWasm",
            "//Userland/Libraries/LibXML",
          ] + idl_sources_targets

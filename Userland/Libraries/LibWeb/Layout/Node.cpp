@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2023, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2021-2023, Sam Atkins <atkinssj@serenityos.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
@@ -152,6 +152,9 @@ bool Node::establishes_stacking_context() const
     if (!has_style())
         return false;
 
+    if (is_svg_box() || is_svg_svg_box())
+        return false;
+
     // We make a stacking context for the viewport. Painting and hit testing starts from here.
     if (is_viewport())
         return true;
@@ -260,6 +263,14 @@ bool Node::is_fixed_position() const
         return false;
     auto position = computed_values().position();
     return position == CSS::Positioning::Fixed;
+}
+
+bool Node::is_sticky_position() const
+{
+    if (!has_style())
+        return false;
+    auto position = computed_values().position();
+    return position == CSS::Positioning::Sticky;
 }
 
 NodeWithStyle::NodeWithStyle(DOM::Document& document, DOM::Node* node, NonnullRefPtr<CSS::StyleProperties> computed_style)
@@ -461,8 +472,13 @@ void NodeWithStyle::apply_style(const CSS::StyleProperties& computed_style)
 
     if (auto maybe_font_variant = computed_style.font_variant(); maybe_font_variant.has_value())
         computed_values.set_font_variant(maybe_font_variant.release_value());
+    if (auto maybe_font_language_override = computed_style.font_language_override(); maybe_font_language_override.has_value())
+        computed_values.set_font_language_override(maybe_font_language_override.release_value());
+    if (auto maybe_font_feature_settings = computed_style.font_feature_settings(); maybe_font_feature_settings.has_value())
+        computed_values.set_font_feature_settings(maybe_font_feature_settings.release_value());
+    if (auto maybe_font_variation_settings = computed_style.font_variation_settings(); maybe_font_variation_settings.has_value())
+        computed_values.set_font_variation_settings(maybe_font_variation_settings.release_value());
 
-    // FIXME: BorderXRadius properties are now BorderRadiusStyleValues, so make use of that.
     auto border_bottom_left_radius = computed_style.property(CSS::PropertyID::BorderBottomLeftRadius);
     if (border_bottom_left_radius->is_border_radius()) {
         computed_values.set_border_bottom_left_radius(
@@ -589,6 +605,9 @@ void NodeWithStyle::apply_style(const CSS::StyleProperties& computed_style)
     if (auto text_overflow = computed_style.text_overflow(); text_overflow.has_value())
         computed_values.set_text_overflow(text_overflow.release_value());
 
+    auto tab_size = computed_style.tab_size();
+    computed_values.set_tab_size(tab_size);
+
     auto white_space = computed_style.white_space();
     if (white_space.has_value())
         computed_values.set_white_space(white_space.value());
@@ -597,8 +616,8 @@ void NodeWithStyle::apply_style(const CSS::StyleProperties& computed_style)
     if (float_.has_value())
         computed_values.set_float(float_.value());
 
-    computed_values.set_border_spacing_horizontal(computed_style.border_spacing_horizontal());
-    computed_values.set_border_spacing_vertical(computed_style.border_spacing_vertical());
+    computed_values.set_border_spacing_horizontal(computed_style.border_spacing_horizontal(*this));
+    computed_values.set_border_spacing_vertical(computed_style.border_spacing_vertical(*this));
 
     auto caption_side = computed_style.caption_side();
     if (caption_side.has_value())
@@ -694,8 +713,8 @@ void NodeWithStyle::apply_style(const CSS::StyleProperties& computed_style)
     if (transition_delay_property->is_time()) {
         auto& transition_delay = transition_delay_property->as_time();
         computed_values.set_transition_delay(transition_delay.time());
-    } else if (transition_delay_property->is_calculated()) {
-        auto& transition_delay = transition_delay_property->as_calculated();
+    } else if (transition_delay_property->is_math()) {
+        auto& transition_delay = transition_delay_property->as_math();
         computed_values.set_transition_delay(transition_delay.resolve_time().value());
     }
 
@@ -716,8 +735,8 @@ void NodeWithStyle::apply_style(const CSS::StyleProperties& computed_style)
         } else {
             auto resolve_border_width = [&]() -> CSSPixels {
                 auto value = computed_style.property(width_property);
-                if (value->is_calculated())
-                    return max(CSSPixels { 0 }, value->as_calculated().resolve_length(*this)->to_px(*this));
+                if (value->is_math())
+                    return max(CSSPixels { 0 }, value->as_math().resolve_length(*this)->to_px(*this));
                 if (value->is_length())
                     return value->as_length().length().to_px(*this);
                 if (value->is_keyword()) {
@@ -880,6 +899,9 @@ void NodeWithStyle::apply_style(const CSS::StyleProperties& computed_style)
     if (auto direction = computed_style.direction(); direction.has_value())
         computed_values.set_direction(direction.value());
 
+    if (auto unicode_bidi = computed_style.unicode_bidi(); unicode_bidi.has_value())
+        computed_values.set_unicode_bidi(unicode_bidi.value());
+
     if (auto scrollbar_width = computed_style.scrollbar_width(); scrollbar_width.has_value())
         computed_values.set_scrollbar_width(scrollbar_width.value());
 
@@ -967,6 +989,12 @@ JS::NonnullGCPtr<NodeWithStyle> NodeWithStyle::create_anonymous_wrapper() const
 {
     auto wrapper = heap().allocate_without_realm<BlockContainer>(const_cast<DOM::Document&>(document()), nullptr, computed_values().clone_inherited_values());
     wrapper->mutable_computed_values().set_display(CSS::Display(CSS::DisplayOutside::Block, CSS::DisplayInside::Flow));
+
+    // NOTE: These properties are not inherited, but we still have to propagate them to anonymous wrappers.
+    wrapper->mutable_computed_values().set_text_decoration_line(computed_values().text_decoration_line());
+    wrapper->mutable_computed_values().set_text_decoration_thickness(computed_values().text_decoration_thickness());
+    wrapper->mutable_computed_values().set_text_decoration_color(computed_values().text_decoration_color());
+    wrapper->mutable_computed_values().set_text_decoration_style(computed_values().text_decoration_style());
     return *wrapper;
 }
 

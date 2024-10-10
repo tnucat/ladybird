@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2023, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -9,6 +9,7 @@
 #include <LibWeb/Bindings/PlatformObject.h>
 #include <LibWeb/Internals/InternalAnimationTimeline.h>
 #include <LibWeb/UIEvents/MouseButton.h>
+#include <LibWeb/WebIDL/Types.h>
 
 namespace Web::Internals {
 
@@ -19,13 +20,13 @@ class Internals final : public Bindings::PlatformObject {
 public:
     virtual ~Internals() override;
 
-    void signal_text_test_is_done();
+    void signal_text_test_is_done(String const& text);
 
     void gc();
     JS::Object* hit_test(double x, double y);
 
-    void send_text(HTML::HTMLElement&, String const&);
-    void send_key(HTML::HTMLElement&, String const&);
+    void send_text(HTML::HTMLElement&, String const&, WebIDL::UnsignedShort modifiers);
+    void send_key(HTML::HTMLElement&, String const&, WebIDL::UnsignedShort modifiers);
     void commit_text();
 
     void click(double x, double y);
@@ -34,6 +35,8 @@ public:
     void wheel(double x, double y, double delta_x, double delta_y);
 
     WebIDL::ExceptionOr<bool> dispatch_user_activated_event(DOM::EventTarget&, DOM::Event& event);
+
+    void spoof_current_url(String const& url);
 
     JS::NonnullGCPtr<InternalAnimationTimeline> create_internal_animation_timeline();
 
@@ -46,6 +49,9 @@ private:
     virtual void initialize(JS::Realm&) override;
 
     void click(double x, double y, UIEvents::MouseButton);
+
+    HTML::Window& internals_window() const;
+    Page& internals_page() const;
 };
 
 }

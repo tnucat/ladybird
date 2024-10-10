@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2023, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -22,6 +22,7 @@ public:
     void build_stacking_context_tree_if_needed();
 
     HashMap<JS::GCPtr<PaintableBox const>, RefPtr<ScrollFrame>> scroll_state;
+    HashMap<JS::GCPtr<PaintableBox const>, RefPtr<ScrollFrame>> sticky_state;
     void assign_scroll_frames();
     void refresh_scroll_state();
 
@@ -31,7 +32,8 @@ public:
     void resolve_paint_only_properties();
 
     JS::GCPtr<Selection::Selection> selection() const;
-    void recompute_selection_states();
+    void recompute_selection_states(DOM::Range&);
+    void update_selection();
 
     bool handle_mousewheel(Badge<EventHandler>, CSSPixelPoint, unsigned, unsigned, int wheel_delta_x, int wheel_delta_y) override;
 

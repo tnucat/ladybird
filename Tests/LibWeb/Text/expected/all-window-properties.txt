@@ -21,6 +21,7 @@ AudioScheduledSourceNode
 AudioTrack
 AudioTrackList
 BaseAudioContext
+BeforeUnloadEvent
 BigInt
 BigInt64Array
 BigUint64Array
@@ -37,6 +38,8 @@ CSSGroupingRule
 CSSImportRule
 CSSKeyframeRule
 CSSKeyframesRule
+CSSLayerBlockRule
+CSSLayerStatementRule
 CSSMediaRule
 CSSNamespaceRule
 CSSRule
@@ -55,6 +58,7 @@ ClipboardEvent
 CloseEvent
 CloseWatcher
 Comment
+CompositionEvent
 CountQueuingStrategy
 Crypto
 CryptoKey
@@ -194,6 +198,7 @@ IdleDeadline
 Image
 ImageBitmap
 ImageData
+InputEvent
 Int16Array
 Int32Array
 Int8Array
@@ -206,6 +211,7 @@ KeyframeEffect
 Location
 Map
 MathMLElement
+MediaCapabilities
 MediaError
 MediaList
 MediaQueryList
@@ -239,6 +245,7 @@ PageTransitionEvent
 Path2D
 Performance
 PerformanceEntry
+PerformanceEventTiming
 PerformanceMark
 PerformanceMeasure
 PerformanceNavigation
@@ -287,6 +294,7 @@ SVGGElement
 SVGGeometryElement
 SVGGradientElement
 SVGGraphicsElement
+SVGImageElement
 SVGLength
 SVGLineElement
 SVGLinearGradientElement
@@ -317,6 +325,7 @@ SVGUseElement
 Screen
 ScreenOrientation
 Selection
+ServiceWorker
 ServiceWorkerContainer
 ServiceWorkerRegistration
 Set
@@ -337,8 +346,11 @@ SyntaxError
 Text
 TextDecoder
 TextEncoder
+TextEvent
 TextMetrics
 TextTrack
+TextTrackCue
+TextTrackCueList
 TextTrackList
 TimeRanges
 ToggleEvent
@@ -356,6 +368,8 @@ Uint32Array
 Uint8Array
 Uint8ClampedArray
 UserActivation
+VTTCue
+VTTRegion
 ValidityState
 VideoTrack
 VideoTrackList
@@ -378,12 +392,15 @@ XMLHttpRequest
 XMLHttpRequestEventTarget
 XMLHttpRequestUpload
 XMLSerializer
+__finishTest
 __preventMultipleTestFunctions
 animationFrame
 asyncTest
 printElement
 println
 promiseTest
+removeTestErrorHandler
+spoofCurrentURL
 test
 timeout
 webkitURL

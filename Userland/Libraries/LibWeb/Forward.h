@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2020-2023, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2021-2023, the SerenityOS developers.
  *
  * SPDX-License-Identifier: BSD-2-Clause
@@ -14,6 +14,7 @@ namespace Web {
 class DragAndDropEventHandler;
 class EditEventHandler;
 class EventHandler;
+enum class InvalidateDisplayList;
 class LoadRequest;
 class Page;
 class PageClient;
@@ -112,6 +113,9 @@ class CSSImportRule;
 class CSSKeyframeRule;
 class CSSKeyframesRule;
 class CSSKeywordValue;
+class CSSLayerBlockRule;
+class CSSLayerStatementRule;
+class CSSMathValue;
 class CSSMediaRule;
 class CSSOKLab;
 class CSSOKLCH;
@@ -124,7 +128,6 @@ class CSSStyleSheet;
 struct CSSStyleSheetInit;
 class CSSStyleValue;
 class CSSSupportsRule;
-class CalculatedStyleValue;
 class Clip;
 class ConicGradientStyleValue;
 class ContentStyleValue;
@@ -175,6 +178,7 @@ class MediaQueryListEvent;
 class Number;
 class NumberOrCalculated;
 class NumberStyleValue;
+class OpenTypeTaggedStyleValue;
 class ParsedFontFace;
 class Percentage;
 class PercentageOrCalculated;
@@ -199,6 +203,7 @@ class StringStyleValue;
 class StyleComputer;
 class StyleProperties;
 class StyleSheet;
+struct StyleSheetIdentifier;
 class StyleSheetList;
 class StyleValueList;
 class Supports;
@@ -239,6 +244,7 @@ class AbortSignal;
 class AbstractRange;
 class AccessibilityTreeNode;
 class Attr;
+class BeforeUnloadEvent;
 class CDATASection;
 class CharacterData;
 class Comment;
@@ -299,6 +305,10 @@ struct TextEncoderEncodeIntoResult;
 
 namespace Web::EntriesAPI {
 class FileSystemEntry;
+}
+
+namespace Web::EventTiming {
+class PerformanceEventTiming;
 }
 
 namespace Web::Fetch {
@@ -478,7 +488,6 @@ class NavigationDestination;
 class NavigationHistoryEntry;
 class NavigationTransition;
 class Navigator;
-class Origin;
 class PageTransitionEvent;
 class Path2D;
 class Plugin;
@@ -492,6 +501,8 @@ class Storage;
 class SubmitEvent;
 class TextMetrics;
 class TextTrack;
+class TextTrackCue;
+class TextTrackCueList;
 class TextTrackList;
 class Timer;
 class TimeRanges;
@@ -518,8 +529,8 @@ enum class AllowMultipleFiles;
 enum class MediaSeekMode;
 enum class SandboxingFlagSet;
 
-struct CrossOriginOpenerPolicy;
-struct CrossOriginOpenerPolicyEnforcementResult;
+struct OpenerPolicy;
+struct OpenerPolicyEnforcementResult;
 struct Environment;
 struct EnvironmentSettingsObject;
 struct NavigationParams;
@@ -588,6 +599,10 @@ struct LayoutState;
 
 namespace Web::MathML {
 class MathMLElement;
+}
+
+namespace Web::MediaCapabilitiesAPI {
+class MediaCapabilities;
 }
 
 namespace Web::MimeSniff {
@@ -696,6 +711,7 @@ class SVGEllipseElement;
 class SVGForeignObjectElement;
 class SVGGeometryElement;
 class SVGGraphicsElement;
+class SVGImageElement;
 class SVGLength;
 class SVGLineElement;
 class SVGMaskElement;
@@ -710,10 +726,13 @@ class SVGTitleElement;
 }
 
 namespace Web::UIEvents {
+class CompositionEvent;
+class InputEvent;
 class KeyboardEvent;
 class MouseEvent;
 class PointerEvent;
-class UIEvents;
+class TextEvent;
+class UIEvent;
 }
 
 namespace Web::DOMURL {
@@ -776,8 +795,18 @@ class ExceptionOr;
 using Promise = JS::PromiseCapability;
 }
 
+namespace Web::WebDriver {
+struct ActionObject;
+struct InputState;
+};
+
 namespace Web::WebSockets {
 class WebSocket;
+}
+
+namespace Web::WebVTT {
+class VTTCue;
+class VTTRegion;
 }
 
 namespace Web::XHR {

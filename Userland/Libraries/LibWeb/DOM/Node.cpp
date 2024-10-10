@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2023, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2021-2022, Linus Groh <linusg@serenityos.org>
  * Copyright (c) 2021, Luke Wilde <lukew@serenityos.org>
  *
@@ -12,6 +12,7 @@
 #include <LibJS/Heap/DeferGC.h>
 #include <LibJS/Runtime/FunctionObject.h>
 #include <LibRegex/Regex.h>
+#include <LibURL/Origin.h>
 #include <LibWeb/Bindings/MainThreadVM.h>
 #include <LibWeb/Bindings/NodePrototype.h>
 #include <LibWeb/DOM/Attr.h>
@@ -38,7 +39,6 @@
 #include <LibWeb/HTML/HTMLStyleElement.h>
 #include <LibWeb/HTML/Navigable.h>
 #include <LibWeb/HTML/NavigableContainer.h>
-#include <LibWeb/HTML/Origin.h>
 #include <LibWeb/HTML/Parser/HTMLParser.h>
 #include <LibWeb/Infra/CharacterTypes.h>
 #include <LibWeb/Layout/Node.h>
@@ -207,8 +207,14 @@ void Node::set_text_content(Optional<String> const& maybe_content)
     // Otherwise, do nothing.
 
     if (is_connected()) {
-        document().invalidate_style();
-        document().invalidate_layout();
+        // FIXME: If there are any :has() selectors, we currently invalidate style for the whole document.
+        //        We need to find a way to invalidate less!
+        if (document().style_computer().has_has_selectors()) {
+            document().invalidate_style(StyleInvalidationReason::NodeSetTextContent);
+        } else {
+            invalidate_style(StyleInvalidationReason::NodeSetTextContent);
+        }
+        document().invalidate_layout_tree();
     }
 
     document().bump_dom_tree_version();
@@ -375,8 +381,27 @@ JS::GCPtr<HTML::Navigable> Node::navigable() const
     return navigable;
 }
 
-void Node::invalidate_style()
+[[maybe_unused]] static StringView to_string(StyleInvalidationReason reason)
 {
+#define __ENUMERATE_STYLE_INVALIDATION_REASON(reason) \
+    case StyleInvalidationReason::reason:             \
+        return #reason##sv;
+    switch (reason) {
+        ENUMERATE_STYLE_INVALIDATION_REASONS(__ENUMERATE_STYLE_INVALIDATION_REASON)
+    default:
+        VERIFY_NOT_REACHED();
+    }
+}
+
+void Node::invalidate_style(StyleInvalidationReason reason)
+{
+    if (is_character_data())
+        return;
+
+    if (!needs_style_update() && !document().needs_full_style_update()) {
+        dbgln_if(STYLE_INVALIDATION_DEBUG, "Invalidate style ({}): {}", to_string(reason), debug_description());
+    }
+
     if (is_document()) {
         auto& document = static_cast<DOM::Document&>(*this);
         document.set_needs_full_style_update(true);
@@ -389,18 +414,42 @@ void Node::invalidate_style()
         return;
     }
 
-    for_each_in_inclusive_subtree([&](Node& node) {
-        node.m_needs_style_update = true;
-        if (node.has_children())
-            node.m_child_needs_style_update = true;
-        if (auto shadow_root = node.is_element() ? static_cast<DOM::Element&>(node).shadow_root() : nullptr) {
-            node.m_child_needs_style_update = true;
-            shadow_root->m_needs_style_update = true;
-            if (shadow_root->has_children())
-                shadow_root->m_child_needs_style_update = true;
+    // When invalidating style for a node, we actually invalidate:
+    // - the node itself
+    // - all of its descendants
+    // - all of its preceding siblings and their descendants (only on DOM insert/remove)
+    // - all of its subsequent siblings and their descendants
+    // FIXME: This is a lot of invalidation and we should implement more sophisticated invalidation to do less work!
+
+    auto invalidate_entire_subtree = [&](Node& subtree_root) {
+        subtree_root.for_each_in_inclusive_subtree([&](Node& node) {
+            node.m_needs_style_update = true;
+            if (node.has_children())
+                node.m_child_needs_style_update = true;
+            if (auto shadow_root = node.is_element() ? static_cast<DOM::Element&>(node).shadow_root() : nullptr) {
+                node.m_child_needs_style_update = true;
+                shadow_root->m_needs_style_update = true;
+                if (shadow_root->has_children())
+                    shadow_root->m_child_needs_style_update = true;
+            }
+            return TraversalDecision::Continue;
+        });
+    };
+
+    invalidate_entire_subtree(*this);
+
+    if (reason == StyleInvalidationReason::NodeInsertBefore || reason == StyleInvalidationReason::NodeRemove) {
+        for (auto* sibling = previous_sibling(); sibling; sibling = sibling->previous_sibling()) {
+            if (sibling->is_element())
+                invalidate_entire_subtree(*sibling);
         }
-        return TraversalDecision::Continue;
-    });
+    }
+
+    for (auto* sibling = next_sibling(); sibling; sibling = sibling->next_sibling()) {
+        if (sibling->is_element())
+            invalidate_entire_subtree(*sibling);
+    }
+
     for (auto* ancestor = parent_or_shadow_host(); ancestor; ancestor = ancestor->parent_or_shadow_host())
         ancestor->m_child_needs_style_update = true;
     document().schedule_style_update();
@@ -598,7 +647,7 @@ void Node::insert_before(JS::NonnullGCPtr<Node> node, JS::GCPtr<Node> child, boo
         // 6. Run assign slottables for a tree with node’s root.
         assign_slottables_for_a_tree(node_to_insert->root());
 
-        node_to_insert->invalidate_style();
+        node_to_insert->invalidate_style(StyleInvalidationReason::NodeInsertBefore);
 
         // 7. For each shadow-including inclusive descendant inclusiveDescendant of node, in shadow-including tree order:
         node_to_insert->for_each_shadow_including_inclusive_descendant([&](Node& inclusive_descendant) {
@@ -639,8 +688,8 @@ void Node::insert_before(JS::NonnullGCPtr<Node> node, JS::GCPtr<Node> child, boo
 
     if (is_connected()) {
         // FIXME: This will need to become smarter when we implement the :has() selector.
-        invalidate_style();
-        document().invalidate_layout();
+        invalidate_style(StyleInvalidationReason::ParentOfInsertedNode);
+        document().invalidate_layout_tree();
     }
 
     document().bump_dom_tree_version();
@@ -698,6 +747,7 @@ WebIDL::ExceptionOr<JS::NonnullGCPtr<Node>> Node::append_child(JS::NonnullGCPtr<
 void Node::remove(bool suppress_observers)
 {
     bool was_connected = is_connected();
+    bool had_layout_node = layout_node();
 
     // 1. Let parent be node’s parent
     auto* parent = this->parent();
@@ -838,8 +888,20 @@ void Node::remove(bool suppress_observers)
     if (was_connected) {
         // Since the tree structure has changed, we need to invalidate both style and layout.
         // In the future, we should find a way to only invalidate the parts that actually need it.
-        document().invalidate_style();
-        document().invalidate_layout();
+
+        // FIXME: If there are any :has() selectors, we currently invalidate style for the whole document.
+        //        We need to find a way to invalidate less!
+        if (document().style_computer().has_has_selectors()) {
+            document().invalidate_style(StyleInvalidationReason::NodeRemove);
+        } else {
+            invalidate_style(StyleInvalidationReason::NodeRemove);
+        }
+
+        // NOTE: If we didn't have a layout node before, rebuilding the layout tree isn't gonna give us one
+        //       after we've been removed from the DOM.
+        if (had_layout_node) {
+            document().invalidate_layout_tree();
+        }
     }
 
     document().bump_dom_tree_version();

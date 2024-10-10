@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2021, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2021-2022, Kenneth Myhra <kennethmyhra@serenityos.org>
  * Copyright (c) 2021-2024, Sam Atkins <atkinssj@serenityos.org>
  *
@@ -283,6 +283,7 @@ ErrorOr<void> posix_fallocate(int fd, off_t offset, off_t length);
 #endif
 
 unsigned hardware_concurrency();
+u64 physical_memory_bytes();
 
 ErrorOr<String> resolve_executable_from_environment(StringView filename, int flags = 0);
 

@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2020, Stephan Unverwerth <s.unverwerth@serenityos.org>
  * Copyright (c) 2020-2023, Linus Groh <linusg@serenityos.org>
- * Copyright (c) 2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2023, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2023, Shannon Booth <shannon@serenityos.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
@@ -387,7 +387,6 @@ ThrowCompletionOr<Value> ECMAScriptFunctionObject::internal_call(Value this_argu
     // Non-standard
     callee_context->arguments.ensure_capacity(max(arguments_list.size(), m_formal_parameters.size()));
     callee_context->arguments.append(arguments_list.data(), arguments_list.size());
-    callee_context->program_counter = vm.bytecode_interpreter().program_counter();
     callee_context->passed_argument_count = arguments_list.size();
     if (arguments_list.size() < m_formal_parameters.size()) {
         for (size_t i = arguments_list.size(); i < m_formal_parameters.size(); ++i)
@@ -462,7 +461,6 @@ ThrowCompletionOr<NonnullGCPtr<Object>> ECMAScriptFunctionObject::internal_const
     // Non-standard
     callee_context->arguments.ensure_capacity(max(arguments_list.size(), m_formal_parameters.size()));
     callee_context->arguments.append(arguments_list.data(), arguments_list.size());
-    callee_context->program_counter = vm.bytecode_interpreter().program_counter();
     callee_context->passed_argument_count = arguments_list.size();
     if (arguments_list.size() < m_formal_parameters.size()) {
         for (size_t i = arguments_list.size(); i < m_formal_parameters.size(); ++i)

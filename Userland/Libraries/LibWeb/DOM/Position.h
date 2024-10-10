@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2020, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2021, Max Wipfli <mail@maxwipfli.ch>
  *
  * SPDX-License-Identifier: BSD-2-Clause
@@ -35,6 +35,9 @@ public:
     void set_offset(unsigned value) { m_offset = value; }
     bool increment_offset();
     bool decrement_offset();
+
+    bool increment_offset_to_next_word();
+    bool decrement_offset_to_previous_word();
 
     bool equals(JS::NonnullGCPtr<Position> other) const
     {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2022-2023, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -7,6 +7,7 @@
 #pragma once
 
 #include <AK/NonnullOwnPtr.h>
+#include <LibWeb/InvalidateDisplayList.h>
 #include <LibWeb/Layout/Box.h>
 #include <LibWeb/Layout/LineBox.h>
 #include <LibWeb/Layout/TextNode.h>
@@ -25,6 +26,8 @@ enum class PaintPhase {
 struct HitTestResult {
     JS::Handle<Paintable> paintable;
     int index_in_node { 0 };
+    Optional<CSSPixels> vertical_distance {};
+    Optional<CSSPixels> horizontal_distance {};
 
     enum InternalPosition {
         None,
@@ -54,9 +57,11 @@ public:
     [[nodiscard]] bool is_visible() const;
     [[nodiscard]] bool is_positioned() const { return m_positioned; }
     [[nodiscard]] bool is_fixed_position() const { return m_fixed_position; }
+    [[nodiscard]] bool is_sticky_position() const { return m_sticky_position; }
     [[nodiscard]] bool is_absolutely_positioned() const { return m_absolutely_positioned; }
     [[nodiscard]] bool is_floating() const { return m_floating; }
     [[nodiscard]] bool is_inline() const { return m_inline; }
+    [[nodiscard]] bool is_selected() const { return m_selected; }
     [[nodiscard]] CSS::Display display() const { return layout_node().display(); }
 
     template<typename U, typename Callback>
@@ -198,7 +203,7 @@ public:
 
     JS::GCPtr<HTML::Navigable> navigable() const;
 
-    virtual void set_needs_display();
+    virtual void set_needs_display(InvalidateDisplayList = InvalidateDisplayList::Yes);
 
     PaintableBox* containing_block() const
     {
@@ -236,6 +241,7 @@ public:
 
     SelectionState selection_state() const { return m_selection_state; }
     void set_selection_state(SelectionState state) { m_selection_state = state; }
+    void set_selected(bool selected) { m_selected = selected; }
 
     Gfx::AffineTransform compute_combined_css_transform() const;
 
@@ -258,9 +264,11 @@ private:
 
     bool m_positioned : 1 { false };
     bool m_fixed_position : 1 { false };
+    bool m_sticky_position : 1 { false };
     bool m_absolutely_positioned : 1 { false };
     bool m_floating : 1 { false };
     bool m_inline : 1 { false };
+    bool m_selected : 1 { false };
 };
 
 inline DOM::Node* HitTestResult::dom_node()

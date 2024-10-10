@@ -233,21 +233,14 @@ void DisplayListRecorder::draw_text(Gfx::IntRect const& rect, String raw_text, G
     if (rect.is_empty())
         return;
 
-    auto glyph_run = adopt_ref(*new Gfx::GlyphRun({}, font));
-    float glyph_run_width = 0;
-    Gfx::for_each_glyph_position(
-        { 0, 0 }, raw_text.code_points(), font, [&](Gfx::DrawGlyphOrEmoji const& glyph_or_emoji) {
-            glyph_run->append(glyph_or_emoji);
-        },
-        glyph_run_width);
-
+    auto glyph_run = Gfx::shape_text({}, raw_text.code_points(), font, Gfx::GlyphRun::TextType::Ltr);
     float baseline_x = 0;
     if (alignment == Gfx::TextAlignment::CenterLeft) {
         baseline_x = rect.x();
     } else if (alignment == Gfx::TextAlignment::Center) {
-        baseline_x = static_cast<float>(rect.x()) + (static_cast<float>(rect.width()) - glyph_run_width) / 2.0f;
+        baseline_x = static_cast<float>(rect.x()) + (static_cast<float>(rect.width()) - glyph_run->width()) / 2.0f;
     } else if (alignment == Gfx::TextAlignment::CenterRight) {
-        baseline_x = static_cast<float>(rect.right()) - glyph_run_width;
+        baseline_x = static_cast<float>(rect.right()) - glyph_run->width();
     } else {
         // Unimplemented alignment.
         TODO();
@@ -304,7 +297,6 @@ void DisplayListRecorder::push_stacking_context(PushStackingContextParams params
 {
     append(PushStackingContext {
         .opacity = params.opacity,
-        .is_fixed_position = params.is_fixed_position,
         .source_paintable_rect = params.source_paintable_rect,
         // No translations apply to fixed-position stacking contexts.
         .post_transform_translation = params.is_fixed_position
@@ -314,7 +306,6 @@ void DisplayListRecorder::push_stacking_context(PushStackingContextParams params
             .origin = params.transform.origin,
             .matrix = params.transform.matrix,
         },
-        .mask = params.mask,
         .clip_path = params.clip_path });
     m_state_stack.append(State());
 }
@@ -416,6 +407,29 @@ void DisplayListRecorder::paint_scrollbar(int scroll_frame_id, Gfx::IntRect rect
         .rect = rect,
         .scroll_size = scroll_size,
         .vertical = vertical });
+}
+
+void DisplayListRecorder::apply_opacity(float opacity)
+{
+    append(ApplyOpacity { .opacity = opacity });
+}
+
+void DisplayListRecorder::apply_transform(Gfx::FloatPoint origin, Gfx::FloatMatrix4x4 matrix)
+{
+    append(ApplyTransform {
+        .origin = origin,
+        .matrix = matrix,
+        .post_transform_translation = state().translation.translation().to_rounded<int>(),
+    });
+}
+
+void DisplayListRecorder::apply_mask_bitmap(Gfx::IntPoint origin, Gfx::Bitmap const& bitmap, Gfx::Bitmap::MaskKind kind)
+{
+    append(ApplyMaskBitmap {
+        .origin = origin,
+        .bitmap = bitmap,
+        .kind = kind,
+    });
 }
 
 }

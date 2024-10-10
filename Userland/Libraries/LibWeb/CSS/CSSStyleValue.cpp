@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2023, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2021-2024, Sam Atkins <sam@ladybird.org>
  * Copyright (c) 2021, Tobias Christiansen <tobyase@serenityos.org>
  * Copyright (c) 2022-2023, MacDue <macdue@dueutil.tech>
@@ -18,7 +18,7 @@
 #include <LibWeb/CSS/StyleValues/BorderRadiusStyleValue.h>
 #include <LibWeb/CSS/StyleValues/CSSColorValue.h>
 #include <LibWeb/CSS/StyleValues/CSSKeywordValue.h>
-#include <LibWeb/CSS/StyleValues/CalculatedStyleValue.h>
+#include <LibWeb/CSS/StyleValues/CSSMathValue.h>
 #include <LibWeb/CSS/StyleValues/ConicGradientStyleValue.h>
 #include <LibWeb/CSS/StyleValues/ContentStyleValue.h>
 #include <LibWeb/CSS/StyleValues/CounterDefinitionsStyleValue.h>
@@ -40,6 +40,7 @@
 #include <LibWeb/CSS/StyleValues/LinearGradientStyleValue.h>
 #include <LibWeb/CSS/StyleValues/MathDepthStyleValue.h>
 #include <LibWeb/CSS/StyleValues/NumberStyleValue.h>
+#include <LibWeb/CSS/StyleValues/OpenTypeTaggedStyleValue.h>
 #include <LibWeb/CSS/StyleValues/PercentageStyleValue.h>
 #include <LibWeb/CSS/StyleValues/PositionStyleValue.h>
 #include <LibWeb/CSS/StyleValues/RadialGradientStyleValue.h>
@@ -100,10 +101,10 @@ BorderRadiusStyleValue const& CSSStyleValue::as_border_radius() const
     return static_cast<BorderRadiusStyleValue const&>(*this);
 }
 
-CalculatedStyleValue const& CSSStyleValue::as_calculated() const
+CSSMathValue const& CSSStyleValue::as_math() const
 {
-    VERIFY(is_calculated());
-    return static_cast<CalculatedStyleValue const&>(*this);
+    VERIFY(is_math());
+    return static_cast<CSSMathValue const&>(*this);
 }
 
 CSSColorValue const& CSSStyleValue::as_color() const
@@ -244,6 +245,12 @@ NumberStyleValue const& CSSStyleValue::as_number() const
     return static_cast<NumberStyleValue const&>(*this);
 }
 
+OpenTypeTaggedStyleValue const& CSSStyleValue::as_open_type_tagged() const
+{
+    VERIFY(is_open_type_tagged());
+    return static_cast<OpenTypeTaggedStyleValue const&>(*this);
+}
+
 PercentageStyleValue const& CSSStyleValue::as_percentage() const
 {
     VERIFY(is_percentage());
@@ -378,8 +385,8 @@ int CSSStyleValue::to_font_weight() const
     if (is_number()) {
         return round_to<int>(as_number().number());
     }
-    if (is_calculated()) {
-        auto maybe_weight = const_cast<CalculatedStyleValue&>(as_calculated()).resolve_integer();
+    if (is_math()) {
+        auto maybe_weight = const_cast<CSSMathValue&>(as_math()).resolve_integer();
         if (maybe_weight.has_value())
             return maybe_weight.value();
     }
@@ -407,7 +414,7 @@ int CSSStyleValue::to_font_slope() const
     return normal_slope;
 }
 
-int CSSStyleValue::to_font_stretch_width() const
+int CSSStyleValue::to_font_width() const
 {
     int width = Gfx::FontWidth::Normal;
     if (is_keyword()) {

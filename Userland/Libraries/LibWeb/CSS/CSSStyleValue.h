@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2023, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2021, Tobias Christiansen <tobyase@serenityos.org>
  * Copyright (c) 2021-2024, Sam Atkins <sam@ladybird.org>
  * Copyright (c) 2022-2023, MacDue <macdue@dueutil.tech>
@@ -93,7 +93,6 @@ public:
         BackgroundSize,
         BasicShape,
         BorderRadius,
-        Calculated,
         Color,
         ConicGradient,
         Content,
@@ -115,8 +114,10 @@ public:
         Keyword,
         Length,
         LinearGradient,
+        Math,
         MathDepth,
         Number,
+        OpenTypeTagged,
         Percentage,
         Position,
         RadialGradient,
@@ -163,10 +164,6 @@ public:
     bool is_border_radius() const { return type() == Type::BorderRadius; }
     BorderRadiusStyleValue const& as_border_radius() const;
     BorderRadiusStyleValue& as_border_radius() { return const_cast<BorderRadiusStyleValue&>(const_cast<CSSStyleValue const&>(*this).as_border_radius()); }
-
-    bool is_calculated() const { return type() == Type::Calculated; }
-    CalculatedStyleValue const& as_calculated() const;
-    CalculatedStyleValue& as_calculated() { return const_cast<CalculatedStyleValue&>(const_cast<CSSStyleValue const&>(*this).as_calculated()); }
 
     bool is_color() const { return type() == Type::Color; }
     CSSColorValue const& as_color() const;
@@ -252,6 +249,10 @@ public:
     LinearGradientStyleValue const& as_linear_gradient() const;
     LinearGradientStyleValue& as_linear_gradient() { return const_cast<LinearGradientStyleValue&>(const_cast<CSSStyleValue const&>(*this).as_linear_gradient()); }
 
+    bool is_math() const { return type() == Type::Math; }
+    CSSMathValue const& as_math() const;
+    CSSMathValue& as_math() { return const_cast<CSSMathValue&>(const_cast<CSSStyleValue const&>(*this).as_math()); }
+
     bool is_math_depth() const { return type() == Type::MathDepth; }
     MathDepthStyleValue const& as_math_depth() const;
     MathDepthStyleValue& as_math_depth() { return const_cast<MathDepthStyleValue&>(const_cast<CSSStyleValue const&>(*this).as_math_depth()); }
@@ -259,6 +260,10 @@ public:
     bool is_number() const { return type() == Type::Number; }
     NumberStyleValue const& as_number() const;
     NumberStyleValue& as_number() { return const_cast<NumberStyleValue&>(const_cast<CSSStyleValue const&>(*this).as_number()); }
+
+    bool is_open_type_tagged() const { return type() == Type::OpenTypeTagged; }
+    OpenTypeTaggedStyleValue const& as_open_type_tagged() const;
+    OpenTypeTaggedStyleValue& as_open_type_tagged() { return const_cast<OpenTypeTaggedStyleValue&>(const_cast<CSSStyleValue const&>(*this).as_open_type_tagged()); }
 
     bool is_percentage() const { return type() == Type::Percentage; }
     PercentageStyleValue const& as_percentage() const;
@@ -326,10 +331,11 @@ public:
 
     // https://www.w3.org/TR/css-values-4/#common-keywords
     // https://drafts.csswg.org/css-cascade-4/#valdef-all-revert
-    bool is_css_wide_keyword() const { return is_inherit() || is_initial() || is_revert() || is_unset(); }
+    bool is_css_wide_keyword() const { return is_inherit() || is_initial() || is_revert() || is_unset() || is_revert_layer(); }
     bool is_inherit() const { return to_keyword() == Keyword::Inherit; }
     bool is_initial() const { return to_keyword() == Keyword::Initial; }
     bool is_revert() const { return to_keyword() == Keyword::Revert; }
+    bool is_revert_layer() const { return to_keyword() == Keyword::RevertLayer; }
     bool is_unset() const { return to_keyword() == Keyword::Unset; }
 
     bool has_auto() const;
@@ -343,7 +349,7 @@ public:
 
     [[nodiscard]] int to_font_weight() const;
     [[nodiscard]] int to_font_slope() const;
-    [[nodiscard]] int to_font_stretch_width() const;
+    [[nodiscard]] int to_font_width() const;
 
     virtual bool equals(CSSStyleValue const& other) const = 0;
 

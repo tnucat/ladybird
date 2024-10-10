@@ -559,9 +559,6 @@ WebIDL::ExceptionOr<void> Animation::play()
 // https://www.w3.org/TR/web-animations-1/#play-an-animation
 WebIDL::ExceptionOr<void> Animation::play_an_animation(AutoRewind auto_rewind)
 {
-    if (auto document = document_for_timing())
-        document->ensure_animation_timer();
-
     // 1. Let aborted pause be a boolean flag that is true if animation has a pending pause task, and false otherwise.
     auto aborted_pause = m_pending_pause_task == TaskState::Scheduled;
 
@@ -1330,9 +1327,13 @@ JS::NonnullGCPtr<WebIDL::Promise> Animation::current_finished_promise() const
 
 void Animation::invalidate_effect()
 {
-    if (m_effect) {
-        if (auto target = m_effect->target(); target && target->paintable()) {
-            target->document().set_needs_animated_style_update();
+    if (!m_effect) {
+        return;
+    }
+
+    if (auto* target = m_effect->target(); target) {
+        target->document().set_needs_animated_style_update();
+        if (target->paintable()) {
             target->paintable()->set_needs_display();
         }
     }
@@ -1358,6 +1359,7 @@ void Animation::visit_edges(Cell::Visitor& visitor)
     visitor.visit(m_timeline);
     visitor.visit(m_current_ready_promise);
     visitor.visit(m_current_finished_promise);
+    visitor.visit(m_owning_element);
 }
 
 }

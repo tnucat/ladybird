@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2024, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2024, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -20,5 +20,7 @@ bool matches(CSS::Selector const&, Optional<CSS::CSSStyleSheet const&> style_she
 
 [[nodiscard]] bool fast_matches(CSS::Selector const&, Optional<CSS::CSSStyleSheet const&> style_sheet_for_rule, DOM::Element const&, JS::GCPtr<DOM::Element const> shadow_host);
 [[nodiscard]] bool can_use_fast_matches(CSS::Selector const&);
+
+[[nodiscard]] bool matches_hover_pseudo_class(DOM::Element const&);
 
 }

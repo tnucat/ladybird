@@ -1,7 +1,8 @@
 /*
- * Copyright (c) 2020-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2020-2023, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2021-2022, Linus Groh <linusg@serenityos.org>
  * Copyright (c) 2023, Andrew Kaster <akaster@serenityos.org>
+ * Copyright (c) 2024, Sam Atkins <sam@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -10,9 +11,12 @@
 #include <LibJS/Console.h>
 #include <LibJS/Runtime/ConsoleObject.h>
 #include <LibWeb/Bindings/MainThreadVM.h>
+#include <LibWeb/CSS/CSSImportRule.h>
 #include <LibWeb/Cookie/ParsedCookie.h>
 #include <LibWeb/DOM/Attr.h>
 #include <LibWeb/DOM/NamedNodeMap.h>
+#include <LibWeb/HTML/HTMLLinkElement.h>
+#include <LibWeb/HTML/HTMLStyleElement.h>
 #include <LibWeb/HTML/Scripting/ClassicScript.h>
 #include <LibWeb/HTML/TraversableNavigable.h>
 #include <LibWeb/Layout/Viewport.h>
@@ -48,17 +52,16 @@ PageClient::PageClient(PageHost& owner, u64 id)
     , m_backing_store_manager(*this)
 {
     setup_palette();
+
+    int refresh_interval = 1000 / 60; // FIXME: Account for the actual refresh rate of the display
+    m_paint_refresh_timer = Core::Timer::create_repeating(refresh_interval, [] {
+        Web::HTML::main_thread_event_loop().queue_task_to_update_the_rendering();
+    });
+
+    m_paint_refresh_timer->start();
 }
 
 PageClient::~PageClient() = default;
-
-void PageClient::schedule_repaint()
-{
-    if (m_paint_state != PaintState::Ready) {
-        m_paint_state = PaintState::PaintWhenReady;
-        return;
-    }
-}
 
 bool PageClient::is_ready_to_paint() const
 {
@@ -67,13 +70,7 @@ bool PageClient::is_ready_to_paint() const
 
 void PageClient::ready_to_paint()
 {
-    auto old_paint_state = exchange(m_paint_state, PaintState::Ready);
-
-    if (old_paint_state == PaintState::PaintWhenReady) {
-        // NOTE: Repainting always has to be scheduled from HTML event loop processing steps
-        //       to make sure style and layout are up-to-date.
-        Web::HTML::main_thread_event_loop().schedule();
-    }
+    m_paint_state = PaintState::Ready;
 }
 
 void PageClient::visit_edges(JS::Cell::Visitor& visitor)
@@ -118,28 +115,28 @@ void PageClient::set_palette_impl(Gfx::PaletteImpl& impl)
 {
     m_palette_impl = impl;
     if (auto* document = page().top_level_browsing_context().active_document())
-        document->invalidate_style();
+        document->invalidate_style(Web::DOM::StyleInvalidationReason::SettingsChange);
 }
 
 void PageClient::set_preferred_color_scheme(Web::CSS::PreferredColorScheme color_scheme)
 {
     m_preferred_color_scheme = color_scheme;
     if (auto* document = page().top_level_browsing_context().active_document())
-        document->invalidate_style();
+        document->invalidate_style(Web::DOM::StyleInvalidationReason::SettingsChange);
 }
 
 void PageClient::set_preferred_contrast(Web::CSS::PreferredContrast contrast)
 {
     m_preferred_contrast = contrast;
     if (auto* document = page().top_level_browsing_context().active_document())
-        document->invalidate_style();
+        document->invalidate_style(Web::DOM::StyleInvalidationReason::SettingsChange);
 }
 
 void PageClient::set_preferred_motion(Web::CSS::PreferredMotion motion)
 {
     m_preferred_motion = motion;
     if (auto* document = page().top_level_browsing_context().active_document())
-        document->invalidate_style();
+        document->invalidate_style(Web::DOM::StyleInvalidationReason::SettingsChange);
 }
 
 void PageClient::set_is_scripting_enabled(bool is_scripting_enabled)
@@ -192,8 +189,6 @@ void PageClient::process_screenshot_requests()
 
 void PageClient::paint_next_frame()
 {
-    process_screenshot_requests();
-
     auto back_store = m_backing_store_manager.back_store();
     if (!back_store)
         return;
@@ -362,9 +357,9 @@ void PageClient::page_did_finish_loading(URL::URL const& url)
     client().async_did_finish_loading(m_id, url);
 }
 
-void PageClient::page_did_finish_text_test()
+void PageClient::page_did_finish_text_test(String const& text)
 {
-    client().async_did_finish_text_test(m_id);
+    client().async_did_finish_text_test(m_id, text);
 }
 
 void PageClient::page_did_request_context_menu(Web::CSSPixelPoint content_position)
@@ -475,17 +470,17 @@ void PageClient::page_did_change_favicon(Gfx::Bitmap const& favicon)
 
 Vector<Web::Cookie::Cookie> PageClient::page_did_request_all_cookies(URL::URL const& url)
 {
-    return client().did_request_all_cookies(m_id, url);
+    return client().did_request_all_cookies(url);
 }
 
 Optional<Web::Cookie::Cookie> PageClient::page_did_request_named_cookie(URL::URL const& url, String const& name)
 {
-    return client().did_request_named_cookie(m_id, url, name);
+    return client().did_request_named_cookie(url, name);
 }
 
 String PageClient::page_did_request_cookie(URL::URL const& url, Web::Cookie::Source source)
 {
-    auto response = client().send_sync_but_allow_failure<Messages::WebContentClient::DidRequestCookie>(m_id, move(url), source);
+    auto response = client().send_sync_but_allow_failure<Messages::WebContentClient::DidRequestCookie>(url, source);
     if (!response) {
         dbgln("WebContent client disconnected during DidRequestCookie. Exiting peacefully.");
         exit(0);
@@ -495,7 +490,7 @@ String PageClient::page_did_request_cookie(URL::URL const& url, Web::Cookie::Sou
 
 void PageClient::page_did_set_cookie(URL::URL const& url, Web::Cookie::ParsedCookie const& cookie, Web::Cookie::Source source)
 {
-    auto response = client().send_sync_but_allow_failure<Messages::WebContentClient::DidSetCookie>(m_id, url, cookie, source);
+    auto response = client().send_sync_but_allow_failure<Messages::WebContentClient::DidSetCookie>(url, cookie, source);
     if (!response) {
         dbgln("WebContent client disconnected during DidSetCookie. Exiting peacefully.");
         exit(0);
@@ -504,7 +499,7 @@ void PageClient::page_did_set_cookie(URL::URL const& url, Web::Cookie::ParsedCoo
 
 void PageClient::page_did_update_cookie(Web::Cookie::Cookie cookie)
 {
-    client().async_did_update_cookie(m_id, move(cookie));
+    client().async_did_update_cookie(move(cookie));
 }
 
 void PageClient::page_did_update_resource_count(i32 count_waiting)
@@ -654,6 +649,16 @@ void PageClient::inspector_did_request_dom_tree_context_menu(i32 node_id, Web::C
     client().async_inspector_did_request_dom_tree_context_menu(m_id, node_id, page().css_to_device_point(position).to_type<int>(), type, tag, attribute_index);
 }
 
+void PageClient::inspector_did_request_cookie_context_menu(size_t cookie_index, Web::CSSPixelPoint position)
+{
+    client().async_inspector_did_request_cookie_context_menu(m_id, cookie_index, page().css_to_device_point(position).to_type<int>());
+}
+
+void PageClient::inspector_did_request_style_sheet_source(Web::CSS::StyleSheetIdentifier const& identifier)
+{
+    client().async_inspector_did_request_style_sheet_source(m_id, identifier);
+}
+
 void PageClient::inspector_did_execute_console_script(String const& script)
 {
     client().async_inspector_did_execute_console_script(m_id, script);
@@ -737,6 +742,88 @@ void PageClient::console_peer_did_misbehave(char const* reason)
 void PageClient::did_get_js_console_messages(i32 start_index, Vector<ByteString> message_types, Vector<ByteString> messages)
 {
     client().async_did_get_js_console_messages(m_id, start_index, move(message_types), move(messages));
+}
+
+static void gather_style_sheets(Vector<Web::CSS::StyleSheetIdentifier>& results, Web::CSS::CSSStyleSheet& sheet)
+{
+    Web::CSS::StyleSheetIdentifier identifier {};
+
+    bool valid = true;
+
+    if (sheet.owner_rule()) {
+        identifier.type = Web::CSS::StyleSheetIdentifier::Type::ImportRule;
+    } else if (auto* node = sheet.owner_node()) {
+        if (node->is_html_style_element() || node->is_svg_style_element()) {
+            identifier.type = Web::CSS::StyleSheetIdentifier::Type::StyleElement;
+        } else if (is<Web::HTML::HTMLLinkElement>(node)) {
+            identifier.type = Web::CSS::StyleSheetIdentifier::Type::LinkElement;
+        } else {
+            dbgln("Can't identify where style sheet came from; owner node is {}", node->debug_description());
+            identifier.type = Web::CSS::StyleSheetIdentifier::Type::StyleElement;
+        }
+        identifier.dom_element_unique_id = node->unique_id();
+    } else {
+        dbgln("Style sheet has no owner rule or owner node; skipping");
+        valid = false;
+    }
+
+    if (valid) {
+        if (auto location = sheet.location(); location.has_value())
+            identifier.url = location.release_value();
+
+        results.append(move(identifier));
+    }
+
+    for (auto& import_rule : sheet.import_rules()) {
+        if (import_rule->loaded_style_sheet()) {
+            gather_style_sheets(results, *import_rule->loaded_style_sheet());
+        } else {
+            // We can gather this anyway, and hope it loads later
+            results.append({ .type = Web::CSS::StyleSheetIdentifier::Type::ImportRule,
+                .url = MUST(import_rule->url().to_string()) });
+        }
+    }
+}
+
+Vector<Web::CSS::StyleSheetIdentifier> PageClient::list_style_sheets() const
+{
+    Vector<Web::CSS::StyleSheetIdentifier> results;
+
+    auto const* document = page().top_level_browsing_context().active_document();
+    if (document) {
+        for (auto& sheet : document->style_sheets().sheets()) {
+            gather_style_sheets(results, sheet);
+        }
+    }
+
+    // User style
+    if (page().user_style().has_value()) {
+        results.append({
+            .type = Web::CSS::StyleSheetIdentifier::Type::UserStyle,
+        });
+    }
+
+    // User-agent
+    results.append({
+        .type = Web::CSS::StyleSheetIdentifier::Type::UserAgent,
+        .url = "CSS/Default.css"_string,
+    });
+    if (document && document->in_quirks_mode()) {
+        results.append({
+            .type = Web::CSS::StyleSheetIdentifier::Type::UserAgent,
+            .url = "CSS/QuirksMode.css"_string,
+        });
+    }
+    results.append({
+        .type = Web::CSS::StyleSheetIdentifier::Type::UserAgent,
+        .url = "MathML/Default.css"_string,
+    });
+    results.append({
+        .type = Web::CSS::StyleSheetIdentifier::Type::UserAgent,
+        .url = "SVG/Default.css"_string,
+    });
+
+    return results;
 }
 
 Web::DisplayListPlayerType PageClient::display_list_player_type() const

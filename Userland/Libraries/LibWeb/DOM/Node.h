@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2023, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -52,6 +52,40 @@ enum class FragmentSerializationMode {
     Outer,
 };
 
+#define ENUMERATE_STYLE_INVALIDATION_REASONS(X)     \
+    X(AdoptedStyleSheetsList)                       \
+    X(AnimationEffectSetAssociatedAnimation)        \
+    X(CSSFontLoaded)                                \
+    X(CSSImportRule)                                \
+    X(DidLoseFocus)                                 \
+    X(DidReceiveFocus)                              \
+    X(EditingInsertion)                             \
+    X(ElementAttributeChange)                       \
+    X(ElementSetShadowRoot)                         \
+    X(HTMLInputElementSetChecked)                   \
+    X(HTMLObjectElementUpdateLayoutAndChildObjects) \
+    X(HTMLSelectElementSetIsOpen)                   \
+    X(Hover)                                        \
+    X(MediaQueryChangedMatchState)                  \
+    X(NavigableSetViewportSize)                     \
+    X(NodeInsertBefore)                             \
+    X(NodeRemove)                                   \
+    X(NodeSetTextContent)                           \
+    X(Other)                                        \
+    X(ParentOfInsertedNode)                         \
+    X(SetSelectorText)                              \
+    X(SettingsChange)                               \
+    X(StyleSheetDeleteRule)                         \
+    X(StyleSheetInsertRule)                         \
+    X(StyleSheetListAddSheet)                       \
+    X(StyleSheetListRemoveSheet)
+
+enum class StyleInvalidationReason {
+#define __ENUMERATE_STYLE_INVALIDATION_REASON(reason) reason,
+    ENUMERATE_STYLE_INVALIDATION_REASONS(__ENUMERATE_STYLE_INVALIDATION_REASON)
+#undef __ENUMERATE_STYLE_INVALIDATION_REASON
+};
+
 class Node : public EventTarget {
     WEB_PLATFORM_OBJECT(Node, EventTarget);
 
@@ -83,6 +117,7 @@ public:
     virtual bool is_svg_element() const { return false; }
     virtual bool is_svg_graphics_element() const { return false; }
     virtual bool is_svg_script_element() const { return false; }
+    virtual bool is_svg_style_element() const { return false; }
     virtual bool is_svg_svg_element() const { return false; }
     virtual bool is_svg_use_element() const { return false; }
 
@@ -100,8 +135,10 @@ public:
     virtual bool is_html_base_element() const { return false; }
     virtual bool is_html_body_element() const { return false; }
     virtual bool is_html_input_element() const { return false; }
+    virtual bool is_html_link_element() const { return false; }
     virtual bool is_html_progress_element() const { return false; }
     virtual bool is_html_script_element() const { return false; }
+    virtual bool is_html_style_element() const { return false; }
     virtual bool is_html_template_element() const { return false; }
     virtual bool is_html_table_element() const { return false; }
     virtual bool is_html_table_section_element() const { return false; }
@@ -224,7 +261,7 @@ public:
     bool child_needs_style_update() const { return m_child_needs_style_update; }
     void set_child_needs_style_update(bool b) { m_child_needs_style_update = b; }
 
-    void invalidate_style();
+    void invalidate_style(StyleInvalidationReason);
 
     void set_document(Badge<Document>, Document&);
 

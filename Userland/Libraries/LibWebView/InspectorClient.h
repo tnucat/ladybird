@@ -39,10 +39,13 @@ public:
     void context_menu_add_dom_node_attribute();
     void context_menu_remove_dom_node_attribute();
     void context_menu_copy_dom_node_attribute_value();
+    void context_menu_delete_cookie();
+    void context_menu_delete_all_cookies();
 
     Function<void(Gfx::IntPoint)> on_requested_dom_node_text_context_menu;
     Function<void(Gfx::IntPoint, String const&)> on_requested_dom_node_tag_context_menu;
     Function<void(Gfx::IntPoint, String const&, Attribute const&)> on_requested_dom_node_attribute_context_menu;
+    Function<void(Gfx::IntPoint, Web::Cookie::Cookie const&)> on_requested_cookie_context_menu;
 
 private:
     void load_inspector();
@@ -50,6 +53,8 @@ private:
     String generate_dom_tree(JsonObject const&);
     String generate_accessibility_tree(JsonObject const&);
     void select_node(i32 node_id);
+
+    void load_cookies();
 
     void request_console_messages();
     void handle_console_message(i32 message_index);
@@ -81,6 +86,9 @@ private:
     Optional<ContextMenuData> m_context_menu_data;
 
     HashMap<int, Vector<Attribute>> m_dom_node_attributes;
+
+    Vector<Web::Cookie::Cookie> m_cookies;
+    Optional<size_t> m_cookie_context_menu_index;
 
     i32 m_highest_notified_message_index { -1 };
     i32 m_highest_received_message_index { -1 };

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2024, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2022-2024, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2024, Sam Atkins <atkinssj@serenityos.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
@@ -105,11 +105,13 @@ static CSSPixelRect measure_scrollable_overflow(Box const& box)
                 return IterationDecision::Continue;
 
             auto child_border_box = child.paintable_box()->absolute_border_box_rect();
+
             // NOTE: Here we check that the child is not wholly in the negative scrollable overflow region.
-            if (child_border_box.bottom() > 0 && child_border_box.right() > 0) {
-                scrollable_overflow_rect = scrollable_overflow_rect.united(child_border_box);
-                content_overflow_rect = content_overflow_rect.united(child_border_box);
-            }
+            if (child_border_box.bottom() < 0 || child_border_box.right() < 0)
+                return IterationDecision::Continue;
+
+            scrollable_overflow_rect = scrollable_overflow_rect.united(child_border_box);
+            content_overflow_rect = content_overflow_rect.united(child_border_box);
 
             // - The scrollable overflow areas of all of the above boxes
             //   (including zero-area boxes and accounting for transforms as described above),
@@ -278,6 +280,11 @@ void LayoutState::commit(Box& root)
                 auto& svg_geometry_paintable = static_cast<Painting::SVGPathPaintable&>(paintable_box);
                 svg_geometry_paintable.set_computed_path(move(*used_values.computed_svg_path()));
             }
+
+            if (node.display().is_grid_inside()) {
+                paintable_box.set_used_values_for_grid_template_columns(used_values.grid_template_columns());
+                paintable_box.set_used_values_for_grid_template_rows(used_values.grid_template_rows());
+            }
         }
     }
 
@@ -376,6 +383,43 @@ void LayoutState::commit(Box& root)
         auto& paintable_box = const_cast<Painting::PaintableBox&>(*box.paintable_box());
         if (!paintable_box.scroll_offset().is_zero())
             paintable_box.set_scroll_offset(paintable_box.scroll_offset());
+    }
+
+    for (auto& it : used_values_per_layout_node) {
+        auto& used_values = *it.value;
+        if (!used_values.node().is_box())
+            continue;
+        auto const& box = static_cast<Layout::Box const&>(used_values.node());
+
+        auto& paintable_box = const_cast<Painting::PaintableBox&>(*box.paintable_box());
+
+        if (box.is_sticky_position()) {
+            // https://drafts.csswg.org/css-position/#insets
+            // For sticky positioned boxes, the inset is instead relative to the relevant scrollport’s size. Negative values are allowed.
+
+            auto sticky_insets = make<Painting::PaintableBox::StickyInsets>();
+            auto const& inset = box.computed_values().inset();
+
+            auto const* nearest_scrollable_ancestor = paintable_box.nearest_scrollable_ancestor();
+            CSSPixelSize scrollport_size;
+            if (nearest_scrollable_ancestor) {
+                scrollport_size = nearest_scrollable_ancestor->absolute_rect().size();
+            }
+
+            if (!inset.top().is_auto()) {
+                sticky_insets->top = inset.top().to_px(box, scrollport_size.height());
+            }
+            if (!inset.right().is_auto()) {
+                sticky_insets->right = inset.right().to_px(box, scrollport_size.width());
+            }
+            if (!inset.bottom().is_auto()) {
+                sticky_insets->bottom = inset.bottom().to_px(box, scrollport_size.height());
+            }
+            if (!inset.left().is_auto()) {
+                sticky_insets->left = inset.left().to_px(box, scrollport_size.width());
+            }
+            paintable_box.set_sticky_insets(move(sticky_insets));
+        }
     }
 }
 

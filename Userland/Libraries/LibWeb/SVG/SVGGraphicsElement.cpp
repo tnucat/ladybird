@@ -2,7 +2,7 @@
  * Copyright (c) 2020, Matthew Olsson <mattco@serenityos.org>
  * Copyright (c) 2021-2022, Sam Atkins <atkinssj@serenityos.org>
  * Copyright (c) 2023, MacDue <macdue@dueutil.tech>
- * Copyright (c) 2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2023, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -45,7 +45,7 @@ void SVGGraphicsElement::attribute_changed(FlyString const& name, Optional<Strin
         if (transform_list.has_value())
             m_transform = transform_from_transform_list(*transform_list);
         // FIXME: This should only invalidate the contents of the SVG.
-        document().invalidate_layout();
+        document().invalidate_layout_tree();
     }
 }
 
@@ -262,6 +262,7 @@ Optional<float> SVGGraphicsElement::stroke_width() const
     return width.to_px(*layout_node(), scaled_viewport_size).to_double();
 }
 
+// https://svgwg.org/svg2-draft/types.html#__svg__SVGGraphicsElement__getBBox
 JS::NonnullGCPtr<Geometry::DOMRect> SVGGraphicsElement::get_b_box(Optional<SVGBoundingBoxOptions>)
 {
     // FIXME: It should be possible to compute this without layout updates. The bounding box is within the
@@ -272,7 +273,10 @@ JS::NonnullGCPtr<Geometry::DOMRect> SVGGraphicsElement::get_b_box(Optional<SVGBo
     if (!layout_node())
         return Geometry::DOMRect::create(realm());
     // Invert the SVG -> screen space transform.
-    auto svg_element_rect = shadow_including_first_ancestor_of_type<SVG::SVGSVGElement>()->paintable_box()->absolute_rect();
+    auto owner_svg_element = this->owner_svg_element();
+    if (!owner_svg_element)
+        return Geometry::DOMRect::create(realm());
+    auto svg_element_rect = owner_svg_element->paintable_box()->absolute_rect();
     auto inverse_transform = static_cast<Painting::SVGGraphicsPaintable&>(*paintable_box()).computed_transforms().svg_to_css_pixels_transform().inverse();
     auto translated_rect = paintable_box()->absolute_rect().to_type<float>().translated(-svg_element_rect.location().to_type<float>());
     if (inverse_transform.has_value())

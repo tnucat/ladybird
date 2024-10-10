@@ -1,2 +1,6 @@
+#include <LibWeb/WebDriver/Response.h>
+
 endpoint WebDriverServer {
+    script_executed(Web::WebDriver::Response response) =|
+    actions_performed(Web::WebDriver::Response response) =|
 }

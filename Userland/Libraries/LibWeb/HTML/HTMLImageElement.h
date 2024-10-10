@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2023, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2023, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -80,6 +80,10 @@ public:
     // https://html.spec.whatwg.org/multipage/images.html#select-an-image-source
     [[nodiscard]] Optional<ImageSourceAndPixelDensity> select_an_image_source();
 
+    StringView decoding() const;
+
+    void set_decoding(String);
+
     void set_source_set(SourceSet);
 
     ImageRequest& current_request() { return *m_current_request; }
@@ -89,6 +93,9 @@ public:
 
     // https://html.spec.whatwg.org/multipage/images.html#upgrade-the-pending-request-to-the-current-request
     void upgrade_pending_request_to_current_request();
+
+    // https://html.spec.whatwg.org/multipage/embedded-content.html#allows-auto-sizes
+    bool allows_auto_sizes() const;
 
     // ^Layout::ImageProvider
     virtual bool is_image_available() const override;
@@ -147,6 +154,15 @@ private:
     SourceSet m_source_set;
 
     CSSPixelSize m_last_seen_viewport_size;
+
+    // https://html.spec.whatwg.org/multipage/images.html#image-decoding-hint
+    enum class ImageDecodingHint {
+        Auto,
+        Sync,
+        Async
+    };
+
+    ImageDecodingHint m_decoding_hint = ImageDecodingHint::Auto;
 };
 
 }

@@ -13,6 +13,7 @@
 #include <LibWebView/Application.h>
 #include <LibWebView/WebContentClient.h>
 #include <UI/LadybirdWebViewBridge.h>
+#include <Utilities/Conversions.h>
 
 #import <Application/Application.h>
 
@@ -24,6 +25,21 @@ namespace Ladybird {
 
 class ApplicationBridge : public WebView::Application {
     WEB_VIEW_APPLICATION(ApplicationBridge)
+
+private:
+    virtual Optional<ByteString> ask_user_for_download_folder() const override
+    {
+        auto* panel = [NSOpenPanel openPanel];
+        [panel setAllowsMultipleSelection:NO];
+        [panel setCanChooseDirectories:YES];
+        [panel setCanChooseFiles:NO];
+        [panel setMessage:@"Select download directory"];
+
+        if ([panel runModal] != NSModalResponseOK)
+            return {};
+
+        return Ladybird::ns_string_to_byte_string([[panel URL] path]);
+    }
 };
 
 ApplicationBridge::ApplicationBridge(Badge<WebView::Application>, Main::Arguments&)
@@ -116,14 +132,9 @@ static ErrorOr<NonnullRefPtr<ImageDecoderClient::Client>> launch_new_image_decod
 - (ErrorOr<IPC::File>)launchWebWorker
 {
     auto web_worker_paths = TRY(get_paths_for_helper_process("WebWorker"sv));
-    auto worker_client = TRY(launch_web_worker_process(web_worker_paths, m_request_server_client));
+    auto worker_client = TRY(launch_web_worker_process(web_worker_paths, *m_request_server_client));
 
     return worker_client->dup_socket();
-}
-
-- (void)dumpConnectionInfo:(id)sender
-{
-    m_request_server_client->dump_connection_info();
 }
 
 #pragma mark - NSApplication

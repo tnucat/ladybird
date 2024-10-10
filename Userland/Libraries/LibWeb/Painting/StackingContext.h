@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2020, Andreas Kling <andreas@ladybird.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
  */
@@ -36,6 +36,7 @@ public:
 
     static void paint_node_as_stacking_context(Paintable const&, PaintContext&);
     static void paint_descendants(PaintContext&, Paintable const&, StackingContextPaintPhase);
+    static void paint_svg(PaintContext&, PaintableBox const&, PaintPhase);
     void paint(PaintContext&) const;
 
     [[nodiscard]] TraversalDecision hit_test(CSSPixelPoint, HitTestType, Function<TraversalDecision(HitTestResult)> const& callback) const;
@@ -55,7 +56,7 @@ private:
     size_t m_index_in_tree_order { 0 };
     Optional<u64> m_last_paint_generation_id;
 
-    Vector<JS::NonnullGCPtr<Paintable const>> m_positioned_descendants_with_stack_level_0_and_stacking_contexts;
+    Vector<JS::NonnullGCPtr<Paintable const>> m_positioned_descendants_and_stacking_contexts_with_stack_level_0;
     Vector<JS::NonnullGCPtr<Paintable const>> m_non_positioned_floating_descendants;
 
     static void paint_child(PaintContext&, StackingContext const&);

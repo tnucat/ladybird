@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2022, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2023, Linus Groh <linusg@serenityos.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
@@ -22,8 +22,10 @@
 #include <LibWeb/HTML/ColorPickerUpdateState.h>
 #include <LibWeb/HTML/FileFilter.h>
 #include <LibWeb/HTML/SelectItem.h>
+#include <LibWeb/Page/EventResult.h>
 #include <LibWeb/Page/InputEvent.h>
 #include <LibWebView/Forward.h>
+#include <LibWebView/PageInfo.h>
 #include <LibWebView/WebContentClient.h>
 
 namespace WebView {
@@ -61,7 +63,7 @@ public:
     float device_pixel_ratio() const { return m_device_pixel_ratio; }
 
     void enqueue_input_event(Web::InputEvent);
-    void did_finish_handling_input_event(Badge<WebContentClient>, bool event_was_accepted);
+    void did_finish_handling_input_event(Badge<WebContentClient>, Web::EventResult event_result);
 
     void set_preferred_color_scheme(Web::CSS::PreferredColorScheme);
     void set_preferred_contrast(Web::CSS::PreferredContrast);
@@ -70,6 +72,8 @@ public:
     void set_preferred_languages(Vector<String>);
 
     void set_enable_do_not_track(bool);
+
+    void set_enable_autoplay(bool);
 
     ByteString selected_text();
     Optional<String> selected_text_with_whitespace_collapsed();
@@ -96,6 +100,9 @@ public:
     void clone_dom_node(i32 node_id);
     void remove_dom_node(i32 node_id);
     void get_dom_node_html(i32 node_id);
+
+    void list_style_sheets();
+    void request_style_sheet_source(Web::CSS::StyleSheetIdentifier const&);
 
     void debug_request(ByteString const& request, ByteString const& argument = {});
 
@@ -136,6 +143,9 @@ public:
     NonnullRefPtr<Core::Promise<LexicalPath>> take_dom_node_screenshot(i32);
     virtual void did_receive_screenshot(Badge<WebContentClient>, Gfx::ShareableBitmap const&);
 
+    NonnullRefPtr<Core::Promise<String>> request_internal_page_info(PageInfoType);
+    void did_receive_internal_page_info(Badge<WebContentClient>, PageInfoType, String const&);
+
     ErrorOr<LexicalPath> dump_gc_graph();
 
     void set_user_style_sheet(String source);
@@ -163,9 +173,6 @@ public:
     Function<void(URL::URL const&, bool)> on_load_start;
     Function<void(URL::URL const&)> on_load_finish;
     Function<void(ByteString const& path, i32)> on_request_file;
-    Function<void()> on_navigate_back;
-    Function<void()> on_navigate_forward;
-    Function<void()> on_refresh;
     Function<void(Gfx::Bitmap const&)> on_favicon_change;
     Function<void(Gfx::StandardCursor)> on_cursor_change;
     Function<void(Gfx::IntPoint, ByteString const&)> on_request_tooltip_override;
@@ -182,16 +189,14 @@ public:
     Function<void(ByteString const&)> on_received_dom_tree;
     Function<void(Optional<DOMNodeProperties>)> on_received_dom_node_properties;
     Function<void(ByteString const&)> on_received_accessibility_tree;
+    Function<void(Vector<Web::CSS::StyleSheetIdentifier>)> on_received_style_sheet_list;
+    Function<void(Web::CSS::StyleSheetIdentifier const&)> on_inspector_requested_style_sheet_source;
+    Function<void(Web::CSS::StyleSheetIdentifier const&, String const&)> on_received_style_sheet_source;
     Function<void(i32 node_id)> on_received_hovered_node_id;
     Function<void(Optional<i32> const& node_id)> on_finshed_editing_dom_node;
     Function<void(String const&)> on_received_dom_node_html;
     Function<void(i32 message_id)> on_received_console_message;
     Function<void(i32 start_index, Vector<ByteString> const& message_types, Vector<ByteString> const& messages)> on_received_console_messages;
-    Function<Vector<Web::Cookie::Cookie>(URL::URL const& url)> on_get_all_cookies;
-    Function<Optional<Web::Cookie::Cookie>(URL::URL const& url, String const& name)> on_get_named_cookie;
-    Function<String(URL::URL const& url, Web::Cookie::Source source)> on_get_cookie;
-    Function<void(URL::URL const& url, Web::Cookie::ParsedCookie const& cookie, Web::Cookie::Source source)> on_set_cookie;
-    Function<void(Web::Cookie::Cookie const& cookie)> on_update_cookie;
     Function<void(i32 count_waiting)> on_resource_status_change;
     Function<void()> on_restore_window;
     Function<Gfx::IntPoint(Gfx::IntPoint)> on_reposition_window;
@@ -204,7 +209,7 @@ public:
     Function<void(Gfx::IntPoint content_position, i32 minimum_width, Vector<Web::HTML::SelectItem> items)> on_request_select_dropdown;
     Function<void(Web::KeyEvent const&)> on_finish_handling_key_event;
     Function<void(Web::DragEvent const&)> on_finish_handling_drag_event;
-    Function<void()> on_text_test_finish;
+    Function<void(String const&)> on_text_test_finish;
     Function<void(size_t current_match_index, Optional<size_t> const& total_match_count)> on_find_in_page;
     Function<void(Gfx::Color)> on_theme_color_change;
     Function<void(String const&, String const&, String const&)> on_insert_clipboard_entry;
@@ -217,6 +222,7 @@ public:
     Function<void(i32, Vector<Attribute> const&)> on_inspector_added_dom_node_attributes;
     Function<void(i32, size_t, Vector<Attribute> const&)> on_inspector_replaced_dom_node_attribute;
     Function<void(i32, Gfx::IntPoint, String const&, Optional<String> const&, Optional<size_t> const&)> on_inspector_requested_dom_tree_context_menu;
+    Function<void(size_t, Gfx::IntPoint)> on_inspector_requested_cookie_context_menu;
     Function<void(String const&)> on_inspector_executed_console_script;
     Function<void(String const&)> on_inspector_exported_inspector_html;
     Function<IPC::File()> on_request_worker_agent;
@@ -278,6 +284,7 @@ protected:
     RefPtr<Core::Timer> m_repeated_crash_timer;
 
     RefPtr<Core::Promise<LexicalPath>> m_pending_screenshot;
+    RefPtr<Core::Promise<String>> m_pending_info_request;
 
     Web::HTML::AudioPlayState m_audio_play_state { Web::HTML::AudioPlayState::Paused };
     size_t m_number_of_elements_playing_audio { 0 };

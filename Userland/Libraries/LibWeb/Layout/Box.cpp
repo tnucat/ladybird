@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020, Andreas Kling <kling@serenityos.org>
+ * Copyright (c) 2018-2020, Andreas Kling <andreas@ladybird.org>
  * Copyright (c) 2021-2022, Sam Atkins <atkinssj@serenityos.org>
  *
  * SPDX-License-Identifier: BSD-2-Clause
@@ -28,7 +28,13 @@ Box::~Box()
 {
 }
 
-// https://www.w3.org/TR/css-overflow-3/#overflow-control
+void Box::visit_edges(Cell::Visitor& visitor)
+{
+    Base::visit_edges(visitor);
+    visitor.visit(m_contained_abspos_children);
+}
+
+// https://www.w37.org/TR/css-overflow-3/#overflow-control
 static bool overflow_value_makes_box_a_scroll_container(CSS::Overflow overflow)
 {
     switch (overflow) {
@@ -52,12 +58,6 @@ bool Box::is_scroll_container() const
 
     return overflow_value_makes_box_a_scroll_container(computed_values().overflow_x())
         || overflow_value_makes_box_a_scroll_container(computed_values().overflow_y());
-}
-
-bool Box::is_user_scrollable() const
-{
-    // FIXME: Support horizontal scroll as well (overflow-x)
-    return computed_values().overflow_y() == CSS::Overflow::Scroll || computed_values().overflow_y() == CSS::Overflow::Auto;
 }
 
 bool Box::is_body() const

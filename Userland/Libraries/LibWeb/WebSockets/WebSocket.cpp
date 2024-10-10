@@ -8,6 +8,8 @@
 #include <AK/QuickSort.h>
 #include <LibJS/Runtime/ArrayBuffer.h>
 #include <LibJS/Runtime/FunctionObject.h>
+#include <LibRequests/RequestClient.h>
+#include <LibURL/Origin.h>
 #include <LibWeb/Bindings/WebSocketPrototype.h>
 #include <LibWeb/DOM/Document.h>
 #include <LibWeb/DOM/Event.h>
@@ -19,8 +21,7 @@
 #include <LibWeb/HTML/EventHandler.h>
 #include <LibWeb/HTML/EventNames.h>
 #include <LibWeb/HTML/MessageEvent.h>
-#include <LibWeb/HTML/Origin.h>
-#include <LibWeb/HTML/Window.h>
+#include <LibWeb/HTML/WindowOrWorkerGlobalScope.h>
 #include <LibWeb/Loader/ResourceLoader.h>
 #include <LibWeb/WebIDL/AbstractOperations.h>
 #include <LibWeb/WebIDL/Buffers.h>
@@ -31,8 +32,6 @@
 namespace Web::WebSockets {
 
 JS_DEFINE_ALLOCATOR(WebSocket);
-
-WebSocketClientSocket::~WebSocketClientSocket() = default;
 
 // https://websockets.spec.whatwg.org/#dom-websocket-websocket
 WebIDL::ExceptionOr<JS::NonnullGCPtr<WebSocket>> WebSocket::construct_impl(JS::Realm& realm, String const& url, Optional<Variant<String, Vector<String>>> const& protocols)
@@ -123,14 +122,16 @@ ErrorOr<void> WebSocket::establish_web_socket_connection(URL::URL& url_record, V
 {
     // FIXME: Integrate properly with FETCH as per https://fetch.spec.whatwg.org/#websocket-opening-handshake
 
-    auto& window = verify_cast<HTML::Window>(client.global_object());
-    auto origin_string = window.associated_document().origin().serialize();
+    auto* window_or_worker = dynamic_cast<HTML::WindowOrWorkerGlobalScopeMixin*>(&client.global_object());
+    VERIFY(window_or_worker);
+    auto origin_string = MUST(window_or_worker->origin()).to_byte_string();
 
     Vector<ByteString> protcol_byte_strings;
     for (auto const& protocol : protocols)
         TRY(protcol_byte_strings.try_append(protocol.to_byte_string()));
 
-    m_websocket = ResourceLoader::the().connector().websocket_connect(url_record, origin_string, protcol_byte_strings);
+    m_websocket = ResourceLoader::the().request_client().websocket_connect(url_record, origin_string, protcol_byte_strings);
+
     m_websocket->on_open = [weak_this = make_weak_ptr<WebSocket>()] {
         if (!weak_this)
             return;
@@ -160,11 +161,11 @@ ErrorOr<void> WebSocket::establish_web_socket_connection(URL::URL& url_record, V
 }
 
 // https://websockets.spec.whatwg.org/#dom-websocket-readystate
-WebSocket::ReadyState WebSocket::ready_state() const
+Requests::WebSocket::ReadyState WebSocket::ready_state() const
 {
-    if (!m_websocket)
-        return WebSocket::ReadyState::Closed;
-    return const_cast<WebSocketClientSocket&>(*m_websocket).ready_state();
+    if (m_websocket)
+        return m_websocket->ready_state();
+    return Requests::WebSocket::ReadyState::Closed;
 }
 
 // https://websockets.spec.whatwg.org/#dom-websocket-extensions
@@ -201,7 +202,7 @@ WebIDL::ExceptionOr<void> WebSocket::close(Optional<u16> code, Optional<String> 
     // 3. Run the first matching steps from the following list:
     auto state = ready_state();
     // -> If this's ready state is CLOSING (2) or CLOSED (3)
-    if (state == WebSocket::ReadyState::Closing || state == WebSocket::ReadyState::Closed)
+    if (state == Requests::WebSocket::ReadyState::Closing || state == Requests::WebSocket::ReadyState::Closed)
         return {};
     // -> If the WebSocket connection is not yet established [WSP]
     // -> If the WebSocket closing handshake has not yet been started [WSP]
@@ -216,9 +217,9 @@ WebIDL::ExceptionOr<void> WebSocket::close(Optional<u16> code, Optional<String> 
 WebIDL::ExceptionOr<void> WebSocket::send(Variant<JS::Handle<WebIDL::BufferSource>, JS::Handle<FileAPI::Blob>, String> const& data)
 {
     auto state = ready_state();
-    if (state == WebSocket::ReadyState::Connecting)
+    if (state == Requests::WebSocket::ReadyState::Connecting)
         return WebIDL::InvalidStateError::create(realm(), "Websocket is still CONNECTING"_fly_string);
-    if (state == WebSocket::ReadyState::Open) {
+    if (state == Requests::WebSocket::ReadyState::Open) {
         TRY_OR_THROW_OOM(vm(),
             data.visit(
                 [this](String const& string) -> ErrorOr<void> {
@@ -273,7 +274,7 @@ void WebSocket::on_close(u16 code, String reason, bool was_clean)
 // https://websockets.spec.whatwg.org/#feedback-from-the-protocol
 void WebSocket::on_message(ByteBuffer message, bool is_text)
 {
-    if (m_websocket->ready_state() != WebSocket::ReadyState::Open)
+    if (m_websocket->ready_state() != Requests::WebSocket::ReadyState::Open)
         return;
     if (is_text) {
         auto text_message = ByteString(ReadonlyBytes(message));
@@ -286,7 +287,11 @@ void WebSocket::on_message(ByteBuffer message, bool is_text)
 
     if (m_binary_type == "blob") {
         // type indicates that the data is Binary and binaryType is "blob"
-        TODO();
+        HTML::MessageEventInit event_init;
+        event_init.data = FileAPI::Blob::create(realm(), message, "text/plain;charset=utf-8"_string);
+        event_init.origin = url().release_value_but_fixme_should_propagate_errors();
+        dispatch_event(HTML::MessageEvent::create(realm(), HTML::EventNames::message, event_init));
+        return;
     } else if (m_binary_type == "arraybuffer") {
         // type indicates that the data is Binary and binaryType is "arraybuffer"
         HTML::MessageEventInit event_init;

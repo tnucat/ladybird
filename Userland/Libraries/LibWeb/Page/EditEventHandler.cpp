@@ -22,7 +22,7 @@ void EditEventHandler::handle_delete_character_after(JS::NonnullGCPtr<DOM::Docum
     auto& node = verify_cast<DOM::Text>(*cursor_position->node());
     auto& text = node.data();
 
-    auto next_offset = node.segmenter().next_boundary(cursor_position->offset());
+    auto next_offset = node.grapheme_segmenter().next_boundary(cursor_position->offset());
     if (!next_offset.has_value()) {
         // FIXME: Move to the next node and delete the first character there.
         return;
@@ -116,7 +116,7 @@ void EditEventHandler::handle_insert(JS::NonnullGCPtr<DOM::Document> document, J
         } else {
             node.set_data(MUST(builder.to_string()));
         }
-        node.invalidate_style();
+        node.invalidate_style(DOM::StyleInvalidationReason::EditingInsertion);
     } else {
         auto& node = *position->node();
         auto& realm = node.realm();
