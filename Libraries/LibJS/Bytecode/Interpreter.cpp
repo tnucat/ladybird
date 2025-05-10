@@ -142,40 +142,40 @@ static ByteString format_value_list(StringView name, ReadonlySpan<Value> values)
     return builder.to_byte_string();
 }
 
-ALWAYS_INLINE static ThrowCompletionOr<Value> loosely_inequals(VM& vm, Value src1, Value src2)
+ALWAYS_INLINE static ThrowCompletionOr<bool> loosely_inequals(VM& vm, Value src1, Value src2)
 {
     if (src1.tag() == src2.tag()) {
         if (src1.is_int32() || src1.is_object() || src1.is_boolean() || src1.is_nullish())
-            return Value(src1.encoded() != src2.encoded());
+            return src1.encoded() != src2.encoded();
     }
-    return Value(!TRY(is_loosely_equal(vm, src1, src2)));
+    return !TRY(is_loosely_equal(vm, src1, src2));
 }
 
-ALWAYS_INLINE static ThrowCompletionOr<Value> loosely_equals(VM& vm, Value src1, Value src2)
+ALWAYS_INLINE static ThrowCompletionOr<bool> loosely_equals(VM& vm, Value src1, Value src2)
 {
     if (src1.tag() == src2.tag()) {
         if (src1.is_int32() || src1.is_object() || src1.is_boolean() || src1.is_nullish())
-            return Value(src1.encoded() == src2.encoded());
+            return src1.encoded() == src2.encoded();
     }
-    return Value(TRY(is_loosely_equal(vm, src1, src2)));
+    return TRY(is_loosely_equal(vm, src1, src2));
 }
 
-ALWAYS_INLINE static ThrowCompletionOr<Value> strict_inequals(VM&, Value src1, Value src2)
+ALWAYS_INLINE static ThrowCompletionOr<bool> strict_inequals(VM&, Value src1, Value src2)
 {
     if (src1.tag() == src2.tag()) {
         if (src1.is_int32() || src1.is_object() || src1.is_boolean() || src1.is_nullish())
-            return Value(src1.encoded() != src2.encoded());
+            return src1.encoded() != src2.encoded();
     }
-    return Value(!is_strictly_equal(src1, src2));
+    return !is_strictly_equal(src1, src2);
 }
 
-ALWAYS_INLINE static ThrowCompletionOr<Value> strict_equals(VM&, Value src1, Value src2)
+ALWAYS_INLINE static ThrowCompletionOr<bool> strict_equals(VM&, Value src1, Value src2)
 {
     if (src1.tag() == src2.tag()) {
         if (src1.is_int32() || src1.is_object() || src1.is_boolean() || src1.is_nullish())
-            return Value(src1.encoded() == src2.encoded());
+            return src1.encoded() == src2.encoded();
     }
-    return Value(is_strictly_equal(src1, src2));
+    return is_strictly_equal(src1, src2);
 }
 
 Interpreter::Interpreter(VM& vm)
@@ -302,14 +302,6 @@ ThrowCompletionOr<Value> Interpreter::run(Script& script_record, GC::Ptr<Environ
     VERIFY(!vm.execution_context_stack().is_empty());
 
     // FIXME: 16. Resume the context that is now on the top of the execution context stack as the running execution context.
-
-    // FIXME: These three should be moved out of Interpreter::run and give the host an option to run these, as it's up to the host when these get run.
-    //        https://tc39.es/ecma262/#sec-jobs for jobs and https://tc39.es/ecma262/#_ref_3508 for ClearKeptObjects
-    //        finish_execution_generation is particularly an issue for LibWeb, as the HTML spec wants to run it specifically after performing a microtask checkpoint.
-    //        The promise and registry cleanup queues don't cause LibWeb an issue, as LibWeb overrides the hooks that push onto these queues.
-    vm.run_queued_promise_jobs();
-
-    vm.run_queued_finalization_registry_cleanup_jobs();
 
     vm.finish_execution_generation();
 
@@ -486,7 +478,7 @@ FLATTEN_ON_CLANG void Interpreter::run_bytecode(size_t entry_point)
                 return;                                                                                                 \
             goto start;                                                                                                 \
         }                                                                                                               \
-        if (result.value().to_boolean())                                                                                \
+        if (result.value())                                                                                             \
             program_counter = instruction.true_target().address();                                                      \
         else                                                                                                            \
             program_counter = instruction.false_target().address();                                                     \
@@ -1932,7 +1924,7 @@ void Dump::execute_impl(Bytecode::Interpreter& interpreter) const
         auto& vm = interpreter.vm();                                                            \
         auto lhs = interpreter.get(m_lhs);                                                      \
         auto rhs = interpreter.get(m_rhs);                                                      \
-        interpreter.set(m_dst, TRY(op_snake_case(vm, lhs, rhs)));                               \
+        interpreter.set(m_dst, Value { TRY(op_snake_case(vm, lhs, rhs)) });                     \
         return {};                                                                              \
     }
 
@@ -2106,7 +2098,7 @@ ThrowCompletionOr<void> LessThan::execute_impl(Bytecode::Interpreter& interprete
         interpreter.set(m_dst, Value(lhs.as_double() < rhs.as_double()));
         return {};
     }
-    interpreter.set(m_dst, TRY(less_than(vm, lhs, rhs)));
+    interpreter.set(m_dst, Value { TRY(less_than(vm, lhs, rhs)) });
     return {};
 }
 
@@ -2123,7 +2115,7 @@ ThrowCompletionOr<void> LessThanEquals::execute_impl(Bytecode::Interpreter& inte
         interpreter.set(m_dst, Value(lhs.as_double() <= rhs.as_double()));
         return {};
     }
-    interpreter.set(m_dst, TRY(less_than_equals(vm, lhs, rhs)));
+    interpreter.set(m_dst, Value { TRY(less_than_equals(vm, lhs, rhs)) });
     return {};
 }
 
@@ -2140,7 +2132,7 @@ ThrowCompletionOr<void> GreaterThan::execute_impl(Bytecode::Interpreter& interpr
         interpreter.set(m_dst, Value(lhs.as_double() > rhs.as_double()));
         return {};
     }
-    interpreter.set(m_dst, TRY(greater_than(vm, lhs, rhs)));
+    interpreter.set(m_dst, Value { TRY(greater_than(vm, lhs, rhs)) });
     return {};
 }
 
@@ -2157,7 +2149,7 @@ ThrowCompletionOr<void> GreaterThanEquals::execute_impl(Bytecode::Interpreter& i
         interpreter.set(m_dst, Value(lhs.as_double() >= rhs.as_double()));
         return {};
     }
-    interpreter.set(m_dst, TRY(greater_than_equals(vm, lhs, rhs)));
+    interpreter.set(m_dst, Value { TRY(greater_than_equals(vm, lhs, rhs)) });
     return {};
 }
 
