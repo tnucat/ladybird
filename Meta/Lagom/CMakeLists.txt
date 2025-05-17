@@ -56,12 +56,6 @@ if(ENABLE_ALL_THE_DEBUG_MACROS)
     include(all_the_debug_macros)
 endif()
 
-# FIXME: BUILD_SHARED_LIBS has a default of OFF, as it's intended to be set by the
-#        user when configuring the project. We should instead change libjs-test262
-#        and oss-fuzz to set this option on their end, and enable it by default in
-#        Meta/ladybird.sh. This is #9867.
-option(BUILD_SHARED_LIBS "Build shared libraries instead of static libraries" ON)
-
 find_package(Threads REQUIRED)
 # FIXME: This global link libraries is required to workaround linker issues (on some systems)
 # from the Ladybird import. See https://github.com/SerenityOS/serenity/issues/16847
@@ -93,31 +87,6 @@ if (EMSCRIPTEN)
     set(CMAKE_EXECUTABLE_SUFFIX ".js")
     add_cxx_compile_options(-gsource-map)
     add_cxx_link_options(--emrun "SHELL:-s ALLOW_MEMORY_GROWTH")
-endif()
-
-if (ENABLE_ADDRESS_SANITIZER)
-    add_cxx_compile_options(-fsanitize=address -fno-omit-frame-pointer)
-    add_cxx_link_options(-fsanitize=address)
-    add_swift_compile_options(-sanitize=address)
-    add_swift_link_options(-sanitize=address)
-endif()
-
-if (ENABLE_MEMORY_SANITIZER)
-    add_cxx_compile_options(-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer)
-    add_cxx_link_options(-fsanitize=memory -fsanitize-memory-track-origins)
-endif()
-
-if (ENABLE_UNDEFINED_SANITIZER AND (APPLE OR NOT ENABLE_SWIFT))
-    add_cxx_compile_options(-fsanitize=undefined -fno-omit-frame-pointer)
-    if (UNDEFINED_BEHAVIOR_IS_FATAL)
-        add_cxx_compile_options(-fno-sanitize-recover=undefined)
-    endif()
-    if (APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang$" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "17")
-        add_cxx_compile_options(-fno-sanitize=function)
-    endif()
-    add_cxx_link_options(-fsanitize=undefined)
-    add_swift_compile_options(-sanitize=undefined)
-    add_swift_link_options(-sanitize=undefined)
 endif()
 
 if (ENABLE_COMPILETIME_FORMAT_CHECK)
@@ -204,8 +173,27 @@ install(
     COMPONENT Lagom_Development
 )
 
+if (WIN32)
+    find_package(pthread REQUIRED)
+    find_package(mman REQUIRED)
+endif()
+
+function(lagom_generate_export_header name fs_name)
+    # Temporary helper to allow libraries to opt-in to using X_API macros
+    # to export symbols required by external consumers. This allows the codebase
+    # to gradually slowly migrate instead of an all-or-nothing approach.
+    if (NOT WIN32)
+        target_compile_options(${name} PRIVATE -fvisibility=hidden)
+    else()
+        set_target_properties(${name} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS OFF)
+    endif()
+    include(GenerateExportHeader)
+    string(TOUPPER ${fs_name} fs_name_upper)
+    generate_export_header(${name} EXPORT_MACRO_NAME ${fs_name_upper}_API EXPORT_FILE_NAME "Export.h")
+endfunction()
+
 function(lagom_lib target_name fs_name)
-    cmake_parse_arguments(LAGOM_LIBRARY "" "LIBRARY_TYPE" "SOURCES;LIBS" ${ARGN})
+    cmake_parse_arguments(LAGOM_LIBRARY "EXPLICIT_SYMBOL_EXPORT" "LIBRARY_TYPE" "SOURCES;LIBS" ${ARGN})
     string(REPLACE "Lib" "" library ${target_name})
     if (NOT LAGOM_LIBRARY_LIBRARY_TYPE)
         set(LAGOM_LIBRARY_LIBRARY_TYPE "")
@@ -226,11 +214,9 @@ function(lagom_lib target_name fs_name)
     endif()
 
     if (WIN32)
-        find_package(pthread REQUIRED)
         target_include_directories(${target_name} PRIVATE ${PTHREAD_INCLUDE_DIR})
         target_link_libraries(${target_name} PRIVATE ${PTHREAD_LIBRARY})
 
-        find_package(mman REQUIRED)
         target_include_directories(${target_name} PRIVATE ${MMAN_INCLUDE_DIR})
         target_link_libraries(${target_name} PRIVATE ${MMAN_LIBRARY})
     endif()
@@ -253,6 +239,9 @@ function(lagom_lib target_name fs_name)
         )
     endif()
     serenity_generated_sources(${target_name})
+    if (LAGOM_LIBRARY_EXPLICIT_SYMBOL_EXPORT)
+        lagom_generate_export_header(${target_name} ${fs_name})
+    endif()
 endfunction()
 
 function(lagom_test source)
@@ -303,8 +292,12 @@ function(serenity_bin name)
 endfunction()
 
 function(serenity_lib name fs_name)
-    cmake_parse_arguments(PARSE_ARGV 2 SERENITY_LIB "" "TYPE" "")
-    lagom_lib(${name} ${fs_name} LIBRARY_TYPE ${SERENITY_LIB_TYPE} SOURCES ${SOURCES} ${GENERATED_SOURCES})
+    cmake_parse_arguments(PARSE_ARGV 2 SERENITY_LIB "EXPLICIT_SYMBOL_EXPORT" "TYPE" "")
+    set(EXPLICIT_SYMBOL_EXPORT "")
+    if (SERENITY_LIB_EXPLICIT_SYMBOL_EXPORT)
+        set(EXPLICIT_SYMBOL_EXPORT "EXPLICIT_SYMBOL_EXPORT")
+    endif()
+    lagom_lib(${name} ${fs_name} LIBRARY_TYPE ${SERENITY_LIB_TYPE} ${EXPLICIT_SYMBOL_EXPORT} SOURCES ${SOURCES} ${GENERATED_SOURCES})
 endfunction()
 
 macro(add_serenity_subdirectory path)
@@ -330,10 +323,6 @@ add_serenity_subdirectory(AK)
 
 # LibCoreMinimal
 add_serenity_subdirectory(Libraries/LibCore)
-if (${CMAKE_SYSTEM_NAME} MATCHES "NetBSD")
-    # NetBSD has its shm_open and shm_unlink functions in librt so we need to link that
-    target_link_libraries(LibCoreMinimal PRIVATE rt)
-endif()
 
 # LibMain
 add_serenity_subdirectory(Libraries/LibMain)
@@ -386,6 +375,7 @@ set(lagom_standard_libraries
     Requests
     RIFF
     Syntax
+    Test
     TextCodec
     Threading
     TLS
@@ -405,20 +395,6 @@ if (ENABLE_GUI_TARGETS)
         WebView
         Web
     )
-endif()
-
-target_link_libraries(LibCore PRIVATE LibURL Threads::Threads)
-if (${CMAKE_SYSTEM_NAME} MATCHES "NetBSD")
-    # NetBSD has its shm_open and shm_unlink functions in librt so we need to link that
-    target_link_libraries(LibCore PRIVATE rt)
-endif()
-if (${CMAKE_SYSTEM_NAME} MATCHES "SunOS")
-    # Solaris has socket and networking related functions in two extra libraries
-    target_link_libraries(LibCore PRIVATE nsl socket)
-endif()
-if (HAIKU)
-    # Haiku has networking related functions in the network library
-    target_link_libraries(LibCore PRIVATE network)
 endif()
 
 compile_ipc(${SERENITY_PROJECT_ROOT}/Services/RequestServer/RequestClient.ipc Services/RequestServer/RequestClientEndpoint.h)
@@ -478,30 +454,16 @@ lagom_utility(xml SOURCES ../../Utilities/xml.cpp LIBS LibFileSystem LibMain Lib
 
 include(CTest)
 if (BUILD_TESTING)
-    # LibTest
-    file(GLOB LIBTEST_SOURCES CONFIGURE_DEPENDS "../../Libraries/LibTest/*.cpp")
-    list(FILTER LIBTEST_SOURCES EXCLUDE REGEX ".*Main.cpp$")
-    add_library(
-        LibTest
-        ${LIBTEST_SOURCES}
-    )
-    target_link_libraries(LibTest PRIVATE AK LibCore LibFileSystem)
-    set_target_properties(LibTest PROPERTIES OUTPUT_NAME lagom-test)
-    add_library(
-        LibTestMain
-        OBJECT
-        "${SERENITY_PROJECT_ROOT}/Libraries/LibTest/TestMain.cpp"
-    )
-    target_link_libraries(LibTest PUBLIC GenericClangPlugin)
-    target_link_libraries(LibTestMain PUBLIC GenericClangPlugin)
-
     # LibTest tests from Tests/
     set(TEST_DIRECTORIES
         AK
         LibCrypto
         LibCompress
+        LibCore
+        LibDiff
         LibDNS
         LibGC
+        LibRegex
         LibTest
         LibTextCodec
         LibThreading
@@ -530,38 +492,6 @@ if (BUILD_TESTING)
     # LibTLS needs a special working directory to find cacert.pem
     lagom_test(../../Tests/LibTLS/TestTLSHandshake.cpp LibTLS LIBS LibTLS LibCrypto)
     lagom_test(../../Tests/LibTLS/TestTLSCertificateParser.cpp LibTLS LIBS LibTLS LibCrypto)
-
-    # LibCore
-    lagom_test(../../Tests/LibCore/TestLibCoreArgsParser.cpp)
-
-    if ((LINUX OR APPLE) AND NOT EMSCRIPTEN)
-        lagom_test(../../Tests/LibCore/TestLibCoreFileWatcher.cpp)
-        lagom_test(../../Tests/LibCore/TestLibCorePromise.cpp LIBS LibThreading)
-    endif()
-
-    lagom_test(../../Tests/LibCore/TestLibCoreDateTime.cpp LIBS LibUnicode)
-
-    if (ENABLE_SWIFT)
-        find_package(SwiftTesting REQUIRED)
-
-        add_executable(TestCoreSwift
-            ../../Tests/LibCore/TestEventLoopActor.swift
-            ../../Tests/LibCore/TestEventLoop.cpp
-        )
-
-        # FIXME: Swift doesn't seem to like object libraries for @main
-        target_sources(TestCoreSwift PRIVATE ../../Tests/Resources/SwiftTestMain.swift)
-
-        set_target_properties(TestCoreSwift PROPERTIES SUFFIX .swift-testing)
-        target_include_directories(TestCoreSwift PRIVATE ../../Tests/LibCore)
-        target_link_libraries(TestCoreSwift PRIVATE AK LibCore SwiftTesting::SwiftTesting)
-        add_test(NAME TestCoreSwift COMMAND TestCoreSwift)
-    endif()
-
-
-    # RegexLibC test POSIX <regex.h> and contains many Serenity extensions
-    # It is therefore not reasonable to run it on Lagom, and we only run the Regex test
-    lagom_test(../../Tests/LibRegex/Regex.cpp LIBS LibRegex WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../Tests/LibRegex)
 
     # JavaScriptTestRunner + LibTest tests
     # test-js

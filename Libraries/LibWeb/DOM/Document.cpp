@@ -151,6 +151,7 @@
 #include <LibWeb/ResizeObserver/ResizeObserverEntry.h>
 #include <LibWeb/SVG/SVGDecodedImageData.h>
 #include <LibWeb/SVG/SVGElement.h>
+#include <LibWeb/SVG/SVGSVGElement.h>
 #include <LibWeb/SVG/SVGStyleElement.h>
 #include <LibWeb/SVG/SVGTitleElement.h>
 #include <LibWeb/Selection/Selection.h>
@@ -892,6 +893,12 @@ Element const* Document::document_element() const
     return first_child_of_type<Element>();
 }
 
+// https://www.w3.org/TR/SVG2/struct.html#InterfaceDocumentExtensions
+GC::Ptr<SVG::SVGSVGElement> Document::root_element()
+{
+    return as_if<SVG::SVGSVGElement>(document_element());
+}
+
 // https://html.spec.whatwg.org/multipage/dom.html#the-html-element-2
 HTML::HTMLHtmlElement* Document::html_element()
 {
@@ -1304,6 +1311,10 @@ void Document::update_layout(UpdateLayoutReason reason)
     if (m_created_for_appropriate_template_contents)
         return;
 
+    // Clear text blocks cache so we rebuild them on the next find action.
+    if (m_layout_root)
+        m_layout_root->invalidate_text_blocks_cache();
+
     invalidate_display_list();
 
     auto* document_element = this->document_element();
@@ -1333,9 +1344,6 @@ void Document::update_layout(UpdateLayoutReason reason)
     });
 
     m_layout_root->for_each_in_inclusive_subtree_of_type<Layout::Box>([&](auto& child) {
-        if (auto dom_node = child.dom_node(); dom_node && dom_node->is_element()) {
-            child.set_has_size_containment(as<Element>(*dom_node).has_size_containment());
-        }
         if (child.needs_layout_update()) {
             child.reset_cached_intrinsic_sizes();
         }

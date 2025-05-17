@@ -57,6 +57,7 @@ namespace AK {
 #endif
 
 namespace Detail {
+
 #ifdef AK_HAS_OBJC_ARC
 inline constexpr bool HaveObjcArc = true;
 #else
@@ -65,6 +66,7 @@ inline constexpr bool HaveObjcArc = false;
 
 // validated in TestFunction.mm
 inline constexpr size_t block_layout_size = 32;
+
 }
 
 template<typename>
@@ -296,7 +298,8 @@ private:
             break;
         case FunctionKind::Outline:
             VERIFY(wrapper);
-            wrapper->destroy();
+            // This code is a bit too clever for gcc. Pinky promise we're only deleting heap objects.
+            AK_IGNORE_DIAGNOSTIC("-Wfree-nonheap-object", wrapper->destroy());
             break;
         case FunctionKind::Block:
             VERIFY(wrapper);

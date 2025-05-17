@@ -10,15 +10,19 @@
 #include <LibJS/Runtime/AbstractOperations.h>
 #include <LibJS/Runtime/Accessor.h>
 #include <LibJS/Runtime/Array.h>
+#include <LibJS/Runtime/ArrayIteratorPrototype.h>
 #include <LibJS/Runtime/ClassFieldDefinition.h>
 #include <LibJS/Runtime/ECMAScriptFunctionObject.h>
 #include <LibJS/Runtime/Error.h>
 #include <LibJS/Runtime/GlobalObject.h>
+#include <LibJS/Runtime/MapIteratorPrototype.h>
 #include <LibJS/Runtime/NativeFunction.h>
 #include <LibJS/Runtime/Object.h>
 #include <LibJS/Runtime/PropertyDescriptor.h>
 #include <LibJS/Runtime/ProxyObject.h>
+#include <LibJS/Runtime/SetIteratorPrototype.h>
 #include <LibJS/Runtime/Shape.h>
+#include <LibJS/Runtime/StringIteratorPrototype.h>
 #include <LibJS/Runtime/Value.h>
 
 namespace JS {
@@ -957,6 +961,18 @@ ThrowCompletionOr<bool> Object::internal_set(PropertyKey const& property_key, Va
     VERIFY(!value.is_special_empty_value());
     VERIFY(!receiver.is_special_empty_value());
 
+    if (receiver.is_object() && property_key == vm().names.next) {
+        auto& receiver_object = receiver.as_object();
+        if (auto* array_iterator_prototype = as_if<ArrayIteratorPrototype>(receiver_object))
+            array_iterator_prototype->set_next_method_was_redefined();
+        else if (auto* map_iterator_prototype = as_if<MapIteratorPrototype>(receiver_object))
+            map_iterator_prototype->set_next_method_was_redefined();
+        else if (auto* set_iterator_prototype = as_if<SetIteratorPrototype>(receiver_object))
+            set_iterator_prototype->set_next_method_was_redefined();
+        else if (auto* string_iterator_prototype = as_if<StringIteratorPrototype>(receiver_object))
+            string_iterator_prototype->set_next_method_was_redefined();
+    }
+
     // 2. Let ownDesc be ? O.[[GetOwnProperty]](P).
     auto own_descriptor = TRY(internal_get_own_property(property_key));
 
@@ -1183,7 +1199,7 @@ Optional<ValueAndAttributes> Object::storage_get(PropertyKey const& property_key
         value = value_and_attributes->value;
         attributes = value_and_attributes->attributes;
     } else {
-        auto metadata = shape().lookup(property_key.to_string_or_symbol());
+        auto metadata = shape().lookup(property_key);
         if (!metadata.has_value())
             return {};
 
@@ -1204,7 +1220,7 @@ bool Object::storage_has(PropertyKey const& property_key) const
 {
     if (property_key.is_number())
         return m_indexed_properties.has_index(property_key.as_number());
-    return shape().lookup(property_key.to_string_or_symbol()).has_value();
+    return shape().lookup(property_key).has_value();
 }
 
 void Object::storage_set(PropertyKey const& property_key, ValueAndAttributes const& value_and_attributes)
@@ -1222,8 +1238,7 @@ void Object::storage_set(PropertyKey const& property_key, ValueAndAttributes con
             intrinsics->value.remove(property_key.as_string());
     }
 
-    auto property_key_string_or_symbol = property_key.to_string_or_symbol();
-    auto metadata = shape().lookup(property_key_string_or_symbol);
+    auto metadata = shape().lookup(property_key);
 
     if (!metadata.has_value()) {
         static constexpr size_t max_transitions_before_converting_to_dictionary = 64;
@@ -1231,18 +1246,18 @@ void Object::storage_set(PropertyKey const& property_key, ValueAndAttributes con
             set_shape(m_shape->create_cacheable_dictionary_transition());
 
         if (m_shape->is_dictionary())
-            m_shape->add_property_without_transition(property_key_string_or_symbol, attributes);
+            m_shape->add_property_without_transition(property_key, attributes);
         else
-            set_shape(*m_shape->create_put_transition(property_key_string_or_symbol, attributes));
+            set_shape(*m_shape->create_put_transition(property_key, attributes));
         m_storage.append(value);
         return;
     }
 
     if (attributes != metadata->attributes) {
         if (m_shape->is_dictionary())
-            m_shape->set_property_attributes_without_transition(property_key_string_or_symbol, attributes);
+            m_shape->set_property_attributes_without_transition(property_key, attributes);
         else
-            set_shape(*m_shape->create_configure_transition(property_key_string_or_symbol, attributes));
+            set_shape(*m_shape->create_configure_transition(property_key, attributes));
     }
 
     m_storage[metadata->offset] = value;
@@ -1260,18 +1275,18 @@ void Object::storage_delete(PropertyKey const& property_key)
             intrinsics->value.remove(property_key.as_string());
     }
 
-    auto metadata = shape().lookup(property_key.to_string_or_symbol());
+    auto metadata = shape().lookup(property_key);
     VERIFY(metadata.has_value());
 
     if (m_shape->is_cacheable_dictionary()) {
         m_shape = m_shape->create_uncacheable_dictionary_transition();
     }
     if (m_shape->is_uncacheable_dictionary()) {
-        m_shape->remove_property_without_transition(property_key.to_string_or_symbol(), metadata->offset);
+        m_shape->remove_property_without_transition(property_key, metadata->offset);
         m_storage.remove(metadata->offset);
         return;
     }
-    m_shape = m_shape->create_delete_transition(property_key.to_string_or_symbol());
+    m_shape = m_shape->create_delete_transition(property_key);
     m_storage.remove(metadata->offset);
 }
 

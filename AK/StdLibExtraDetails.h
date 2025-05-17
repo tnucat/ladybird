@@ -119,9 +119,9 @@ inline constexpr bool IsFunction<Ret(Args...) const volatile> = true;
 template<class Ret, class... Args>
 inline constexpr bool IsFunction<Ret(Args..., ...) const volatile> = true;
 template<class Ret, class... Args>
-inline constexpr bool IsFunction<Ret(Args...)&> = true;
+inline constexpr bool IsFunction<Ret(Args...) &> = true;
 template<class Ret, class... Args>
-inline constexpr bool IsFunction<Ret(Args..., ...)&> = true;
+inline constexpr bool IsFunction<Ret(Args..., ...) &> = true;
 template<class Ret, class... Args>
 inline constexpr bool IsFunction<Ret(Args...) const&> = true;
 template<class Ret, class... Args>
@@ -660,6 +660,7 @@ using EquivalentFunctionType = typename EquivalentFunctionTypeImpl<Callable>::Ty
 
 #if !USING_AK_GLOBALLY
 namespace AK {
+
 #endif
 using AK::Detail::AddConst;
 using AK::Detail::AddConstToReferencedType;
@@ -738,5 +739,6 @@ using AK::Detail::TrueType;
 using AK::Detail::UnderlyingType;
 using AK::Detail::Void;
 #if !USING_AK_GLOBALLY
+
 }
 #endif

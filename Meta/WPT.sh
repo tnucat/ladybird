@@ -85,6 +85,7 @@ WPT_ARGS=( "--webdriver-binary=${WEBDRIVER_BINARY}"
     "--no-pause-after-test"
     "${EXTRA_WPT_ARGS[@]}"
 )
+WPT_LOG_ARGS=()
 
 ARG0=$0
 print_help() {
@@ -172,7 +173,7 @@ set_logging_flags()
     log_type="${1}"
     log_name="${2}"
 
-    WPT_ARGS+=( "${log_type}=${log_name}" )
+    WPT_LOG_ARGS+=("${log_type}" "${log_name}")
 }
 
 headless=1
@@ -458,9 +459,10 @@ show_summary() {
     echo "Longest run time: ${max_time}s"
 }
 
+# run_wpt_chunked <#processes> <wpt args...>
 run_wpt_chunked() {
     local procs concurrency
-    procs=$(make_instances)
+    procs="$1"; shift
 
     # Ensure open files limit is at least 1024, so the WPT runner does not run out of descriptors
     if [ "$(ulimit -n)" -lt $((1024 * procs)) ]; then
@@ -468,22 +470,22 @@ run_wpt_chunked() {
     fi
 
     if [ "$procs" -le 1 ]; then
-        command=(./wpt run -f --processes="${WPT_PROCESSES}" "$@")
+        command=(./wpt run -f --browser-version="1.0-$(ladybird_git_hash)" --processes="${WPT_PROCESSES}" "$@")
         echo "${command[@]}"
         "${command[@]}"
         return
     fi
 
     concurrency=$(( $(nproc) * 2 / procs ))
-    LADYBIRD_GIT_VERSION="$(ladybird_git_hash)"
 
     echo "Preparing the venv setup..."
     base_venv="${BUILD_DIR}/wpt-prep/_venv"
     ./wpt --venv "$base_venv" run "${WPT_ARGS[@]}" ladybird THIS_TEST_CANNOT_POSSIBLY_EXIST || true
 
     echo "Launching $procs chunked instances (concurrency=$concurrency each)"
-    export LADYBIRD_GIT_VERSION
     local logs=()
+    local run_start_time
+    run_start_time=$(date +"%Y%m%d%H%M%S")
 
     for i in $(seq 0 $((procs - 1))); do
         local rundir runpath logpath
@@ -502,20 +504,34 @@ run_wpt_chunked() {
             --total-chunks="$procs" \
             --chunk-type=hash \
             -f \
+            --browser-version="1.0-$(ladybird_git_hash)"
             --processes="$concurrency" \
             "$@")
-        echo "[INSTANCE $i / ns wptns$i] LADYBIRD_GIT_VERSION=$LADYBIRD_GIT_VERSION ${command[*]}"
+        echo "[INSTANCE $i / ns wptns$i] ${command[*]}"
         instance_run "$i" "$rundir" script -q "$logpath" -c "$(printf "%q " "${command[@]}")" &>/dev/null &
     done
 
     show_files "${logs[@]}"
     wait
 
-    copy_results_to "${BUILD_DIR}/wpt-run-$(date +%s)" "$procs"
+    copy_results_to "${BUILD_DIR}/wpt-run-${run_start_time}" "$procs"
     show_summary "${logs[@]}"
 }
 
+absolutize_log_args() {
+    for ((i=0; i<${#WPT_LOG_ARGS[@]}; i += 2)); do
+        WPT_LOG_ARGS[i + 1]="$(absolutize_path "${WPT_LOG_ARGS[i + 1]}")"
+    done
+}
+
 execute_wpt() {
+    local procs
+
+    procs=$(make_instances)
+    if [[ "$procs" -le 1 ]]; then
+        absolutize_log_args
+    fi
+
     pushd "${WPT_SOURCE_DIR}" > /dev/null
         for certificate_path in "${WPT_CERTIFICATES[@]}"; do
             if [ ! -f "${certificate_path}" ]; then
@@ -525,7 +541,7 @@ execute_wpt() {
             WPT_ARGS+=( "--webdriver-arg=--certificate=${certificate_path}" )
         done
         construct_test_list "${@}"
-        run_wpt_chunked "${WPT_ARGS[@]}" ladybird "${TEST_LIST[@]}"
+        run_wpt_chunked "$procs" "${WPT_ARGS[@]}" "${WPT_LOG_ARGS[@]}" ladybird "${TEST_LIST[@]}"
     popd > /dev/null
 }
 

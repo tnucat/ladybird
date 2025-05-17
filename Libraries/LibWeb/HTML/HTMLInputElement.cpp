@@ -1320,6 +1320,7 @@ void HTMLInputElement::user_interaction_did_change_input_value()
     // then when the user changes the element's value, the user agent must queue an element task on the user interaction task source
     // given the input element to fire an event named input at the input element, with the bubbles and composed attributes initialized to true
     queue_an_element_task(HTML::Task::Source::UserInteraction, [this] {
+        // FIXME: If a string was added to this input, this input event's .data should be set to it.
         auto input_event = DOM::Event::create(realm(), HTML::EventNames::input);
         input_event->set_bubbles(true);
         input_event->set_composed(true);
@@ -1791,11 +1792,6 @@ void HTMLInputElement::form_associated_element_was_inserted()
             });
         }
     }
-}
-
-void HTMLInputElement::form_associated_element_was_removed(DOM::Node*)
-{
-    set_shadow_root(nullptr);
 }
 
 bool HTMLInputElement::is_presentational_hint(FlyString const& name) const
@@ -2790,8 +2786,7 @@ WebIDL::ExceptionOr<bool> HTMLInputElement::check_validity()
 // https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#dom-cva-reportvalidity
 WebIDL::ExceptionOr<bool> HTMLInputElement::report_validity()
 {
-    dbgln("(STUBBED) HTMLInputElement::report_validity(). Called on: {}", debug_description());
-    return true;
+    return report_validity_steps();
 }
 
 Optional<ARIA::Role> HTMLInputElement::default_role() const
