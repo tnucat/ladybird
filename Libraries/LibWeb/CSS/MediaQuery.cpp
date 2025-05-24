@@ -17,7 +17,10 @@ NonnullRefPtr<MediaQuery> MediaQuery::create_not_all()
 {
     auto media_query = new MediaQuery;
     media_query->m_negated = true;
-    media_query->m_media_type = MediaType::All;
+    media_query->m_media_type = {
+        .name = "all"_fly_string,
+        .known_type = KnownMediaType::All,
+    };
 
     return adopt_ref(*media_query);
 }
@@ -31,8 +34,11 @@ String MediaFeatureValue::to_string() const
         [](ResolutionOrCalculated const& resolution) { return resolution.to_string(); },
         [](IntegerOrCalculated const& integer) {
             if (integer.is_calculated())
-                return integer.calculated()->to_string(CSSStyleValue::SerializationMode::Normal);
+                return integer.calculated()->to_string(SerializationMode::Normal);
             return String::number(integer.value());
+        },
+        [&](Vector<Parser::ComponentValue> const& values) {
+            return serialize_a_series_of_component_values(values);
         });
 }
 
@@ -43,7 +49,8 @@ bool MediaFeatureValue::is_same_type(MediaFeatureValue const& other) const
         [&](LengthOrCalculated const&) { return other.is_length(); },
         [&](Ratio const&) { return other.is_ratio(); },
         [&](ResolutionOrCalculated const&) { return other.is_resolution(); },
-        [&](IntegerOrCalculated const&) { return other.is_integer(); });
+        [&](IntegerOrCalculated const&) { return other.is_integer(); },
+        [&](Vector<Parser::ComponentValue> const&) { return other.is_unknown(); });
 }
 
 String MediaFeature::to_string() const
@@ -75,10 +82,14 @@ String MediaFeature::to_string() const
         return MUST(String::formatted("max-{}: {}", string_from_media_feature_id(m_id), value().to_string()));
     case Type::Range: {
         auto& range = this->range();
-        if (!range.right_comparison.has_value())
-            return MUST(String::formatted("{} {} {}", range.left_value.to_string(), comparison_string(range.left_comparison), string_from_media_feature_id(m_id)));
+        StringBuilder builder;
+        if (range.left_comparison.has_value())
+            builder.appendff("{} {} ", range.left_value->to_string(), comparison_string(*range.left_comparison));
+        builder.append(string_from_media_feature_id(m_id));
+        if (range.right_comparison.has_value())
+            builder.appendff(" {} {}", comparison_string(*range.right_comparison), range.right_value->to_string());
 
-        return MUST(String::formatted("{} {} {} {} {}", range.left_value.to_string(), comparison_string(range.left_comparison), string_from_media_feature_id(m_id), comparison_string(*range.right_comparison), range.right_value->to_string()));
+        return builder.to_string_without_validation();
     }
     }
 
@@ -110,32 +121,32 @@ MatchResult MediaFeature::evaluate(HTML::Window const* window) const
         if (queried_value.is_resolution())
             return as_match_result(queried_value.resolution().resolved(calculation_context).map([](auto& it) { return it.to_dots_per_pixel(); }).value_or(0) != 0);
         if (queried_value.is_ident()) {
-            // NOTE: It is not technically correct to always treat `no-preference` as false, but every
-            //       media-feature that accepts it as a value treats it as false, so good enough. :^)
-            //       If other features gain this property for other keywords in the future, we can
-            //       add more robust handling for them then.
-            return as_match_result(queried_value.ident() != Keyword::None
-                && queried_value.ident() != Keyword::NoPreference);
+            if (media_feature_keyword_is_falsey(m_id, queried_value.ident()))
+                return MatchResult::False;
+            return MatchResult::True;
         }
         return MatchResult::False;
 
     case Type::ExactValue:
-        return as_match_result(compare(*window, value(), Comparison::Equal, queried_value));
+        return compare(*window, value(), Comparison::Equal, queried_value);
 
     case Type::MinValue:
-        return as_match_result(compare(*window, queried_value, Comparison::GreaterThanOrEqual, value()));
+        return compare(*window, queried_value, Comparison::GreaterThanOrEqual, value());
 
     case Type::MaxValue:
-        return as_match_result(compare(*window, queried_value, Comparison::LessThanOrEqual, value()));
+        return compare(*window, queried_value, Comparison::LessThanOrEqual, value());
 
     case Type::Range: {
-        auto& range = this->range();
-        if (!compare(*window, range.left_value, range.left_comparison, queried_value))
-            return MatchResult::False;
+        auto const& range = this->range();
+        if (range.left_comparison.has_value()) {
+            if (auto const left_result = compare(*window, *range.left_value, *range.left_comparison, queried_value); left_result != MatchResult::True)
+                return left_result;
+        }
 
-        if (range.right_comparison.has_value())
-            if (!compare(*window, queried_value, *range.right_comparison, *range.right_value))
-                return MatchResult::False;
+        if (range.right_comparison.has_value()) {
+            if (auto const right_result = compare(*window, queried_value, *range.right_comparison, *range.right_value); right_result != MatchResult::True)
+                return right_result;
+        }
 
         return MatchResult::True;
     }
@@ -144,15 +155,18 @@ MatchResult MediaFeature::evaluate(HTML::Window const* window) const
     VERIFY_NOT_REACHED();
 }
 
-bool MediaFeature::compare(HTML::Window const& window, MediaFeatureValue const& left, Comparison comparison, MediaFeatureValue const& right)
+MatchResult MediaFeature::compare(HTML::Window const& window, MediaFeatureValue const& left, Comparison comparison, MediaFeatureValue const& right)
 {
+    if (left.is_unknown() || right.is_unknown())
+        return MatchResult::Unknown;
+
     if (!left.is_same_type(right))
-        return false;
+        return MatchResult::False;
 
     if (left.is_ident()) {
         if (comparison == Comparison::Equal)
-            return left.ident() == right.ident();
-        return false;
+            return as_match_result(left.ident() == right.ident());
+        return MatchResult::False;
     }
 
     CalculationResolutionContext calculation_context {
@@ -162,15 +176,15 @@ bool MediaFeature::compare(HTML::Window const& window, MediaFeatureValue const& 
     if (left.is_integer()) {
         switch (comparison) {
         case Comparison::Equal:
-            return left.integer().resolved(calculation_context).value_or(0) == right.integer().resolved(calculation_context).value_or(0);
+            return as_match_result(left.integer().resolved(calculation_context).value_or(0) == right.integer().resolved(calculation_context).value_or(0));
         case Comparison::LessThan:
-            return left.integer().resolved(calculation_context).value_or(0) < right.integer().resolved(calculation_context).value_or(0);
+            return as_match_result(left.integer().resolved(calculation_context).value_or(0) < right.integer().resolved(calculation_context).value_or(0));
         case Comparison::LessThanOrEqual:
-            return left.integer().resolved(calculation_context).value_or(0) <= right.integer().resolved(calculation_context).value_or(0);
+            return as_match_result(left.integer().resolved(calculation_context).value_or(0) <= right.integer().resolved(calculation_context).value_or(0));
         case Comparison::GreaterThan:
-            return left.integer().resolved(calculation_context).value_or(0) > right.integer().resolved(calculation_context).value_or(0);
+            return as_match_result(left.integer().resolved(calculation_context).value_or(0) > right.integer().resolved(calculation_context).value_or(0));
         case Comparison::GreaterThanOrEqual:
-            return left.integer().resolved(calculation_context).value_or(0) >= right.integer().resolved(calculation_context).value_or(0);
+            return as_match_result(left.integer().resolved(calculation_context).value_or(0) >= right.integer().resolved(calculation_context).value_or(0));
         }
         VERIFY_NOT_REACHED();
     }
@@ -197,15 +211,15 @@ bool MediaFeature::compare(HTML::Window const& window, MediaFeatureValue const& 
 
         switch (comparison) {
         case Comparison::Equal:
-            return left_px == right_px;
+            return as_match_result(left_px == right_px);
         case Comparison::LessThan:
-            return left_px < right_px;
+            return as_match_result(left_px < right_px);
         case Comparison::LessThanOrEqual:
-            return left_px <= right_px;
+            return as_match_result(left_px <= right_px);
         case Comparison::GreaterThan:
-            return left_px > right_px;
+            return as_match_result(left_px > right_px);
         case Comparison::GreaterThanOrEqual:
-            return left_px >= right_px;
+            return as_match_result(left_px >= right_px);
         }
 
         VERIFY_NOT_REACHED();
@@ -217,15 +231,15 @@ bool MediaFeature::compare(HTML::Window const& window, MediaFeatureValue const& 
 
         switch (comparison) {
         case Comparison::Equal:
-            return left_decimal == right_decimal;
+            return as_match_result(left_decimal == right_decimal);
         case Comparison::LessThan:
-            return left_decimal < right_decimal;
+            return as_match_result(left_decimal < right_decimal);
         case Comparison::LessThanOrEqual:
-            return left_decimal <= right_decimal;
+            return as_match_result(left_decimal <= right_decimal);
         case Comparison::GreaterThan:
-            return left_decimal > right_decimal;
+            return as_match_result(left_decimal > right_decimal);
         case Comparison::GreaterThanOrEqual:
-            return left_decimal >= right_decimal;
+            return as_match_result(left_decimal >= right_decimal);
         }
         VERIFY_NOT_REACHED();
     }
@@ -236,15 +250,15 @@ bool MediaFeature::compare(HTML::Window const& window, MediaFeatureValue const& 
 
         switch (comparison) {
         case Comparison::Equal:
-            return left_dppx == right_dppx;
+            return as_match_result(left_dppx == right_dppx);
         case Comparison::LessThan:
-            return left_dppx < right_dppx;
+            return as_match_result(left_dppx < right_dppx);
         case Comparison::LessThanOrEqual:
-            return left_dppx <= right_dppx;
+            return as_match_result(left_dppx <= right_dppx);
         case Comparison::GreaterThan:
-            return left_dppx > right_dppx;
+            return as_match_result(left_dppx > right_dppx);
         case Comparison::GreaterThanOrEqual:
-            return left_dppx >= right_dppx;
+            return as_match_result(left_dppx >= right_dppx);
         }
         VERIFY_NOT_REACHED();
     }
@@ -265,8 +279,12 @@ String MediaQuery::to_string() const
     if (m_negated)
         builder.append("not "sv);
 
-    if (m_negated || m_media_type != MediaType::All || !m_media_condition) {
-        builder.append(CSS::to_string(m_media_type));
+    if (m_negated || m_media_type.known_type != KnownMediaType::All || !m_media_condition) {
+        if (m_media_type.known_type.has_value()) {
+            builder.append(CSS::to_string(m_media_type.known_type.value()));
+        } else {
+            builder.append(serialize_an_identifier(m_media_type.name.to_ascii_lowercase()));
+        }
         if (m_media_condition)
             builder.append(" and "sv);
     }
@@ -280,36 +298,26 @@ String MediaQuery::to_string() const
 
 bool MediaQuery::evaluate(HTML::Window const& window)
 {
-    auto matches_media = [](MediaType media) -> MatchResult {
-        switch (media) {
-        case MediaType::All:
+    auto matches_media = [](MediaType const& media) -> MatchResult {
+        if (!media.known_type.has_value())
+            return MatchResult::False;
+        switch (media.known_type.value()) {
+        case KnownMediaType::All:
             return MatchResult::True;
-        case MediaType::Print:
+        case KnownMediaType::Print:
             // FIXME: Enable for printing, when we have printing!
             return MatchResult::False;
-        case MediaType::Screen:
+        case KnownMediaType::Screen:
             // FIXME: Disable for printing, when we have printing!
             return MatchResult::True;
-        case MediaType::Unknown:
-            return MatchResult::False;
-        // Deprecated, must never match:
-        case MediaType::TTY:
-        case MediaType::TV:
-        case MediaType::Projection:
-        case MediaType::Handheld:
-        case MediaType::Braille:
-        case MediaType::Embossed:
-        case MediaType::Aural:
-        case MediaType::Speech:
-            return MatchResult::False;
         }
         VERIFY_NOT_REACHED();
     };
 
     MatchResult result = matches_media(m_media_type);
 
-    if ((result == MatchResult::True) && m_media_condition)
-        result = m_media_condition->evaluate(&window);
+    if ((result != MatchResult::False) && m_media_condition)
+        result = result && m_media_condition->evaluate(&window);
 
     if (m_negated)
         result = negate(result);
@@ -330,60 +338,26 @@ String serialize_a_media_query_list(Vector<NonnullRefPtr<MediaQuery>> const& med
     return MUST(String::join(", "sv, media_queries));
 }
 
-MediaQuery::MediaType media_type_from_string(StringView name)
+Optional<MediaQuery::KnownMediaType> media_type_from_string(StringView name)
 {
     if (name.equals_ignoring_ascii_case("all"sv))
-        return MediaQuery::MediaType::All;
-    if (name.equals_ignoring_ascii_case("aural"sv))
-        return MediaQuery::MediaType::Aural;
-    if (name.equals_ignoring_ascii_case("braille"sv))
-        return MediaQuery::MediaType::Braille;
-    if (name.equals_ignoring_ascii_case("embossed"sv))
-        return MediaQuery::MediaType::Embossed;
-    if (name.equals_ignoring_ascii_case("handheld"sv))
-        return MediaQuery::MediaType::Handheld;
+        return MediaQuery::KnownMediaType::All;
     if (name.equals_ignoring_ascii_case("print"sv))
-        return MediaQuery::MediaType::Print;
-    if (name.equals_ignoring_ascii_case("projection"sv))
-        return MediaQuery::MediaType::Projection;
+        return MediaQuery::KnownMediaType::Print;
     if (name.equals_ignoring_ascii_case("screen"sv))
-        return MediaQuery::MediaType::Screen;
-    if (name.equals_ignoring_ascii_case("speech"sv))
-        return MediaQuery::MediaType::Speech;
-    if (name.equals_ignoring_ascii_case("tty"sv))
-        return MediaQuery::MediaType::TTY;
-    if (name.equals_ignoring_ascii_case("tv"sv))
-        return MediaQuery::MediaType::TV;
-    return MediaQuery::MediaType::Unknown;
+        return MediaQuery::KnownMediaType::Screen;
+    return {};
 }
 
-StringView to_string(MediaQuery::MediaType media_type)
+StringView to_string(MediaQuery::KnownMediaType media_type)
 {
     switch (media_type) {
-    case MediaQuery::MediaType::All:
+    case MediaQuery::KnownMediaType::All:
         return "all"sv;
-    case MediaQuery::MediaType::Aural:
-        return "aural"sv;
-    case MediaQuery::MediaType::Braille:
-        return "braille"sv;
-    case MediaQuery::MediaType::Embossed:
-        return "embossed"sv;
-    case MediaQuery::MediaType::Handheld:
-        return "handheld"sv;
-    case MediaQuery::MediaType::Print:
+    case MediaQuery::KnownMediaType::Print:
         return "print"sv;
-    case MediaQuery::MediaType::Projection:
-        return "projection"sv;
-    case MediaQuery::MediaType::Screen:
+    case MediaQuery::KnownMediaType::Screen:
         return "screen"sv;
-    case MediaQuery::MediaType::Speech:
-        return "speech"sv;
-    case MediaQuery::MediaType::TTY:
-        return "tty"sv;
-    case MediaQuery::MediaType::TV:
-        return "tv"sv;
-    case MediaQuery::MediaType::Unknown:
-        return "unknown"sv;
     }
     VERIFY_NOT_REACHED();
 }

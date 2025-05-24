@@ -45,6 +45,7 @@
 #include <LibWeb/CSS/StyleValues/FrequencyStyleValue.h>
 #include <LibWeb/CSS/StyleValues/GridTrackPlacementStyleValue.h>
 #include <LibWeb/CSS/StyleValues/GridTrackSizeListStyleValue.h>
+#include <LibWeb/CSS/StyleValues/GuaranteedInvalidStyleValue.h>
 #include <LibWeb/CSS/StyleValues/ImageStyleValue.h>
 #include <LibWeb/CSS/StyleValues/IntegerStyleValue.h>
 #include <LibWeb/CSS/StyleValues/LengthStyleValue.h>
@@ -963,6 +964,11 @@ RefPtr<CSSStyleValue const> Parser::parse_resolution_value(TokenStream<Component
     if (tokens.next_token().is(Token::Type::Dimension)) {
         auto transaction = tokens.begin_transaction();
         auto& dimension_token = tokens.consume_a_token().token();
+        // The allowed range of <resolution> values always excludes negative values, in addition to any explicit
+        // ranges that might be specified.
+        // https://drafts.csswg.org/css-values-4/#resolution
+        if (dimension_token.dimension_value() < 0)
+            return nullptr;
         if (auto resolution_type = Resolution::unit_from_name(dimension_token.dimension_unit()); resolution_type.has_value()) {
             transaction.commit();
             return ResolutionStyleValue::create(Resolution { (dimension_token.dimension_value()), resolution_type.release_value() });
@@ -1085,7 +1091,7 @@ RefPtr<CSSStyleValue const> Parser::parse_rect_value(TokenStream<ComponentValue>
             if (!maybe_length.has_value())
                 return nullptr;
             if (maybe_length.value().is_calculated()) {
-                dbgln("FIXME: Support calculated lengths in rect(): {}", maybe_length.value().calculated()->to_string(CSS::CSSStyleValue::SerializationMode::Normal));
+                dbgln("FIXME: Support calculated lengths in rect(): {}", maybe_length.value().calculated()->to_string(CSS::SerializationMode::Normal));
                 return nullptr;
             }
             params.append(maybe_length.value().value());
@@ -1935,7 +1941,7 @@ RefPtr<CSSStyleValue const> Parser::parse_color_value(TokenStream<ComponentValue
         }
         for (auto i = 1u; i < m_value_context.size() && quirky_color_allowed; i++) {
             quirky_color_allowed = m_value_context[i].visit(
-                [](PropertyID const& property_id) { return property_has_quirk(property_id, Quirk::UnitlessLength); },
+                [](PropertyID const& property_id) { return property_has_quirk(property_id, Quirk::HashlessHexColor); },
                 [](FunctionContext const&) { return false; },
                 [](DescriptorContext const&) { return false; });
         }
@@ -3868,6 +3874,7 @@ RefPtr<StringStyleValue const> Parser::parse_opentype_tag_value(TokenStream<Comp
     return string_value;
 }
 
+// https://drafts.csswg.org/css-fonts/#font-face-src-parsing
 RefPtr<FontSourceStyleValue const> Parser::parse_font_source_value(TokenStream<ComponentValue>& tokens)
 {
     // <font-src> = <url> [ format(<font-format>)]? [ tech( <font-tech>#)]? | local(<family-name>)
@@ -3913,6 +3920,12 @@ RefPtr<FontSourceStyleValue const> Parser::parse_font_source_value(TokenStream<C
             return nullptr;
         }
 
+        // FIXME: Some of the formats support an optional "-variations" suffix that's really supposed to map to tech(variations).
+        //        Once we support tech(*), we should ensure this propagates correctly.
+        if (format_name.is_one_of("woff2-variations"sv, "woff-variations"sv, "truetype-variations"sv, "opentype-variations"sv)) {
+            format_name = MUST(format_name.to_string().substring_from_byte_offset(0, format_name.bytes().size() - strlen("-variations")));
+        }
+
         if (!font_format_is_supported(format_name)) {
             dbgln_if(CSS_PARSER_DEBUG, "CSSParser: font source format({}) not supported; skipping.", format_name);
             return nullptr;
@@ -3940,8 +3953,6 @@ NonnullRefPtr<CSSStyleValue const> Parser::resolve_unresolved_style_value(Parsin
     // Unresolved always contains a var() or attr(), unless it is a custom property's value, in which case we shouldn't be trying
     // to produce a different CSSStyleValue from it.
     VERIFY(unresolved.contains_var_or_attr());
-
-    // If the value is invalid, we fall back to `unset`: https://www.w3.org/TR/css-variables-1/#invalid-at-computed-value-time
 
     auto parser = Parser::create(context, ""sv);
     return parser.resolve_unresolved_style_value(element, pseudo_element, property_id, unresolved);
@@ -4005,18 +4016,18 @@ NonnullRefPtr<CSSStyleValue const> Parser::resolve_unresolved_style_value(DOM::E
         }
     };
     if (!expand_variables(element, pseudo_element, string_from_property_id(property_id), dependencies, unresolved_values_without_variables_expanded, values_with_variables_expanded))
-        return CSSKeywordValue::create(Keyword::Unset);
+        return GuaranteedInvalidStyleValue::create();
 
     TokenStream unresolved_values_with_variables_expanded { values_with_variables_expanded };
     Vector<ComponentValue> expanded_values;
     if (!expand_unresolved_values(element, string_from_property_id(property_id), unresolved_values_with_variables_expanded, expanded_values))
-        return CSSKeywordValue::create(Keyword::Unset);
+        return GuaranteedInvalidStyleValue::create();
 
     auto expanded_value_tokens = TokenStream { expanded_values };
     if (auto parsed_value = parse_css_value(property_id, expanded_value_tokens); !parsed_value.is_error())
         return parsed_value.release_value();
 
-    return CSSKeywordValue::create(Keyword::Unset);
+    return GuaranteedInvalidStyleValue::create();
 }
 
 static RefPtr<CSSStyleValue const> get_custom_property(DOM::Element const& element, Optional<CSS::PseudoElement> pseudo_element, FlyString const& custom_property_name)
@@ -4052,6 +4063,9 @@ bool Parser::expand_variables(DOM::Element& element, Optional<PseudoElement> pse
     };
 
     while (source.has_next_token()) {
+        // FIXME: We should properly cascade here instead of doing a basic fallback for CSS-wide keywords.
+        if (auto builtin_value = parse_builtin_value(source))
+            continue;
         auto const& value = source.consume_a_token();
         if (value.is_block()) {
             auto const& source_block = value.block();

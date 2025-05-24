@@ -169,8 +169,9 @@ Each entry has the following properties:
 |----------------------|----------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `alias-for`          | No       | Nothing        | Use to specify that this should be treated as an alias for the named pseudo-element.                                                                                   |
 | `function-syntax`    | No       | Nothing        | Syntax for the function arguments if this is a function-type pseudo-element. Copied directly from the spec.                                                            |
-| `is-generated`       | No       | `false`        | Whether this is a [generated pseudo-element.](https://drafts.csswg.org/css-pseudo-4/#generated-content)                                                                |
-| `is-allowed-in-has`  | No       | `false`        | Whether this is a [`:has`-allowed pseudo-element.](https://drafts.csswg.org/selectors/#has-allowed-pseudo-element)                                                     |
+| `is-generated`       | No       | `false`        | Whether this is a [generated pseudo-element](https://drafts.csswg.org/css-pseudo-4/#generated-content).                                                                |
+| `is-allowed-in-has`  | No       | `false`        | Whether this is a [`:has`-allowed pseudo-element](https://drafts.csswg.org/selectors/#has-allowed-pseudo-element).                                                     |
+| `is-pseudo-root`     | No       | `false` | Whether this is a [pseudo-element root](https://drafts.csswg.org/css-view-transitions/#pseudo-element-root).                                                                  |
 | `property-whitelist` | No       | Nothing        | Some pseudo-elements only permit certain properties. If so, name them in an array here. Some special values are allowed here for categories of properties - see below. |
 | `spec`               | No       | Nothing        | Link to the spec definition, for reference. Not used in generated code.                                                                                                |
 | `type`               | No       | `"identifier"` | What type of pseudo-element is this. Either "identifier", "function", or "both".                                                                                       |
@@ -181,6 +182,7 @@ The generated code provides:
 - `Optional<PseudoElement> aliased_pseudo_element_from_string(StringView)` is similar, but returns the `PseudoElement` this name is an alias for
 - `StringView pseudo_element_name(PseudoElement)` to convert a `PseudoElement` back into a string
 - `bool is_has_allowed_pseudo_element(PseudoElement)` returns whether the pseudo-element is valid inside `:has()`
+- `bool is_pseudo_element_root(PseudoElement)` returns whether the pseudo-element is a [pseudo-element root](https://drafts.csswg.org/css-view-transitions/#pseudo-element-root)
 - `bool pseudo_element_supports_property(PseudoElement, PropertyID)` returns whether the property can be applied to this pseudo-element
 - A `GeneratedPseudoElement` enum listing only the pseudo-elements that are [generated content](https://drafts.csswg.org/css-pseudo-4/#generated-content)
 - `Optional<GeneratedPseudoElement> to_generated_pseudo_element(PseudoElement)` for converting from `PseudoElement` to `GeneratedPseudoElement`. Returns nothing if it's not a generated pseudo-element
@@ -214,10 +216,11 @@ They are listed in the [`@media` descriptor table](https://www.w3.org/TR/mediaqu
 
 The definitions here are like a simplified version of the `Properties.json` definitions.
 
-| Field    | Description                                                                                                                                                                                       |
-|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `type`   | String. How the media-feature is evaluated, either `discrete` or `range`.                                                                                                                         |
-| `values` | Array of strings. These are directly taken from the spec, with keywords as they are, and `<>` around type names. Types may be `<boolean>`, `<integer>`, `<length>`, `<ratio>`, or `<resolution>`. |
+| Field            | Description                                                                                                                                                                                       |
+|------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `type`           | String. How the media-feature is evaluated, either `discrete` or `range`.                                                                                                                         |
+| `values`         | Array of strings. These are directly taken from the spec, with keywords as they are, and `<>` around type names. Types may be `<boolean>`, `<integer>`, `<length>`, `<ratio>`, or `<resolution>`. |
+| `false-keywords` | Array of strings. These are any keywords that should be considered false when the media feature is evaluated as `@media (foo)`. Generally this will be a single value, such as `"none"`.          |
 
 The generated code provides:
 - A `MediaFeatureValueType` enum listing the possible value types
@@ -227,6 +230,7 @@ The generated code provides:
 - `bool media_feature_type_is_range(MediaFeatureID)` returns whether the media feature is a `range` type, as opposed to a `discrete` type
 - `bool media_feature_accepts_type(MediaFeatureID, MediaFeatureValueType)` returns whether the media feature will accept values of this type
 - `bool media_feature_accepts_keyword(MediaFeatureID, Keyword)` returns whether the media feature accepts this keyword
+- `bool media_feature_keyword_is_falsey(MediaFeatureID, Keyword)` returns whether the given keyword is considered false when the media-feature is evaluated in a boolean context. (Like `@media (foo)`)
 
 ## MathFunctions.json
 

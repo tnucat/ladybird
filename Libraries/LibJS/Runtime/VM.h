@@ -127,8 +127,6 @@ public:
     void pop_execution_context()
     {
         m_execution_context_stack.take_last();
-        if (m_execution_context_stack.is_empty() && on_call_stack_emptied)
-            on_call_stack_emptied();
     }
 
     // https://tc39.es/ecma262/#running-execution-context
@@ -166,7 +164,10 @@ public:
     FunctionObject const* active_function_object() const { return running_execution_context().function; }
     FunctionObject* active_function_object() { return running_execution_context().function; }
 
-    bool in_strict_mode() const;
+    bool in_strict_mode() const
+    {
+        return running_execution_context().is_strict_mode;
+    }
 
     size_t argument_count() const
     {
@@ -251,7 +252,6 @@ public:
 
     void promise_rejection_tracker(Promise&, Promise::RejectionOperation) const;
 
-    Function<void()> on_call_stack_emptied;
     Function<void(Promise&)> on_promise_unhandled_rejection;
     Function<void(Promise&)> on_promise_rejection_handled;
     Function<void(Object const&, PropertyKey const&)> on_unimplemented_property_access;

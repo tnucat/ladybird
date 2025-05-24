@@ -1320,6 +1320,7 @@ void HTMLInputElement::user_interaction_did_change_input_value()
     // then when the user changes the element's value, the user agent must queue an element task on the user interaction task source
     // given the input element to fire an event named input at the input element, with the bubbles and composed attributes initialized to true
     queue_an_element_task(HTML::Task::Source::UserInteraction, [this] {
+        // FIXME: If a string was added to this input, this input event's .data should be set to it.
         auto input_event = DOM::Event::create(realm(), HTML::EventNames::input);
         input_event->set_bubbles(true);
         input_event->set_composed(true);
@@ -1791,11 +1792,6 @@ void HTMLInputElement::form_associated_element_was_inserted()
             });
         }
     }
-}
-
-void HTMLInputElement::form_associated_element_was_removed(DOM::Node*)
-{
-    set_shadow_root(nullptr);
 }
 
 bool HTMLInputElement::is_presentational_hint(FlyString const& name) const
@@ -2563,7 +2559,7 @@ Optional<double> HTMLInputElement::allowed_value_step() const
     auto step_string = *maybe_step_string;
 
     // 3. Otherwise, if the attribute's value is an ASCII case-insensitive match for the string "any", then there is no allowed value step.
-    if (Infra::is_ascii_case_insensitive_match(step_string, "any"_string))
+    if (step_string.equals_ignoring_ascii_case("any"sv))
         return {};
 
     // 4. Otherwise, if the rules for parsing floating-point number values, when they are applied to the attribute's value, return an error,
@@ -2790,8 +2786,7 @@ WebIDL::ExceptionOr<bool> HTMLInputElement::check_validity()
 // https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#dom-cva-reportvalidity
 WebIDL::ExceptionOr<bool> HTMLInputElement::report_validity()
 {
-    dbgln("(STUBBED) HTMLInputElement::report_validity(). Called on: {}", debug_description());
-    return true;
+    return report_validity_steps();
 }
 
 Optional<ARIA::Role> HTMLInputElement::default_role() const
@@ -3001,6 +2996,43 @@ bool HTMLInputElement::multiple_applies() const
     switch (type_state()) {
     case TypeAttributeState::Email:
     case TypeAttributeState::FileUpload:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// https://html.spec.whatwg.org/multipage/input.html#do-not-apply
+bool HTMLInputElement::required_applies() const
+{
+    switch (type_state()) {
+    case TypeAttributeState::Text:
+    case TypeAttributeState::Search:
+    case TypeAttributeState::Telephone:
+    case TypeAttributeState::URL:
+    case TypeAttributeState::Email:
+    case TypeAttributeState::Password:
+    case TypeAttributeState::Date:
+    case TypeAttributeState::Month:
+    case TypeAttributeState::Week:
+    case TypeAttributeState::Time:
+    case TypeAttributeState::LocalDateAndTime:
+    case TypeAttributeState::Number:
+    case TypeAttributeState::Checkbox:
+    case TypeAttributeState::RadioButton:
+    case TypeAttributeState::FileUpload:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// https://html.spec.whatwg.org/multipage/input.html#do-not-apply
+bool HTMLInputElement::checked_applies() const
+{
+    switch (type_state()) {
+    case TypeAttributeState::Checkbox:
+    case TypeAttributeState::RadioButton:
         return true;
     default:
         return false;

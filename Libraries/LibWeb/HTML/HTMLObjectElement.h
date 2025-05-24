@@ -95,13 +95,15 @@ private:
 
     GC::Ptr<DOM::DocumentObserver> m_document_observer;
 
-    Optional<DOM::DocumentLoadEventDelayer> m_document_load_event_delayer_for_object_representation_task;
-    Optional<DOM::DocumentLoadEventDelayer> m_document_load_event_delayer_for_resource_load;
+    Vector<DOM::DocumentLoadEventDelayer> m_document_load_event_delayer_for_object_representation_task;
+    Vector<DOM::DocumentLoadEventDelayer> m_document_load_event_delayer_for_resource_load;
 };
 
 }
 
 namespace Web::DOM {
+
 template<>
 inline bool Node::fast_is<HTML::HTMLObjectElement>() const { return is_html_object_element(); }
+
 }

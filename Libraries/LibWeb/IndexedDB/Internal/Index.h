@@ -40,6 +40,12 @@ public:
     [[nodiscard]] KeyPath const& key_path() const { return m_key_path; }
 
     [[nodiscard]] bool has_record_with_key(GC::Ref<Key> key);
+    void clear_records();
+    Optional<IndexRecord&> first_in_range(GC::Ref<IDBKeyRange> range);
+    GC::ConservativeVector<IndexRecord> first_n_in_range(GC::Ref<IDBKeyRange> range, Optional<WebIDL::UnsignedLong> count);
+    u64 count_records_in_range(GC::Ref<IDBKeyRange> range);
+    void store_a_record(IndexRecord const& record);
+    void remove_records_with_value_in_range(GC::Ref<IDBKeyRange> range);
 
     HTML::SerializationRecord referenced_value(IndexRecord const& index_record) const;
 

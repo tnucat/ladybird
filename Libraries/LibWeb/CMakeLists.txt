@@ -71,6 +71,7 @@ set(SOURCES
     CSS/CSS.cpp
     CSS/CSSAnimation.cpp
     CSS/CSSConditionRule.cpp
+    CSS/CSSDescriptors.cpp
     CSS/CSSFontFaceDescriptors.cpp
     CSS/CSSFontFaceRule.cpp
     CSS/CSSGroupingRule.cpp
@@ -79,10 +80,13 @@ set(SOURCES
     CSS/CSSKeyframesRule.cpp
     CSS/CSSLayerBlockRule.cpp
     CSS/CSSLayerStatementRule.cpp
+    CSS/CSSMarginRule.cpp
     CSS/CSSMediaRule.cpp
     CSS/CSSNamespaceRule.cpp
     CSS/CSSNestedDeclarations.cpp
     CSS/CSSNumericType.cpp
+    CSS/CSSPageRule.cpp
+    CSS/CSSPageDescriptors.cpp
     CSS/CSSPropertyRule.cpp
     CSS/CSSRule.cpp
     CSS/CSSRuleList.cpp
@@ -112,6 +116,7 @@ set(SOURCES
     CSS/MediaQueryList.cpp
     CSS/MediaQueryListEvent.cpp
     CSS/Number.cpp
+    CSS/PageSelector.cpp
     CSS/ParsedFontFace.cpp
     CSS/Parser/ComponentValue.cpp
     CSS/Parser/DescriptorParsing.cpp

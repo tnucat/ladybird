@@ -192,7 +192,6 @@ public:
     virtual void clear_algorithm() override;
 
     virtual void form_associated_element_was_inserted() override;
-    virtual void form_associated_element_was_removed(DOM::Node*) override;
     virtual void form_associated_element_attribute_changed(FlyString const&, Optional<String> const&, Optional<FlyString> const&) override;
 
     virtual WebIDL::ExceptionOr<void> cloned(Node&, bool) const override;
@@ -220,6 +219,8 @@ public:
     bool selection_direction_applies() const;
     bool pattern_applies() const;
     bool multiple_applies() const;
+    bool required_applies() const;
+    bool checked_applies() const;
     bool has_selectable_text() const;
 
     bool supports_a_picker() const;
@@ -396,6 +397,8 @@ private:
 }
 
 namespace Web::DOM {
+
 template<>
 inline bool Node::fast_is<HTML::HTMLInputElement>() const { return is_html_input_element(); }
+
 }

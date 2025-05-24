@@ -82,6 +82,9 @@ public:
 
     Optional<String> title() const { return attribute(HTML::AttributeNames::title); }
 
+    bool translate() const;
+    void set_translate(bool);
+
     StringView dir() const;
     void set_dir(String const&);
 
@@ -155,6 +158,8 @@ public:
 
     virtual bool is_valid_invoker_command(String&) { return false; }
     virtual void invoker_command_steps(DOM::Element&, String&) { }
+
+    bool is_form_associated_custom_element();
 
 protected:
     HTMLElement(DOM::Document&, DOM::QualifiedName);
@@ -238,6 +243,8 @@ private:
 }
 
 namespace Web::DOM {
+
 template<>
 inline bool Node::fast_is<HTML::HTMLElement>() const { return is_html_element(); }
+
 }

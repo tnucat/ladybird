@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <AK/FlyString.h>
 #include <AK/NonnullRefPtr.h>
 #include <AK/Optional.h>
 #include <AK/OwnPtr.h>
@@ -13,6 +14,7 @@
 #include <LibWeb/CSS/BooleanExpression.h>
 #include <LibWeb/CSS/CalculatedOr.h>
 #include <LibWeb/CSS/MediaFeatureID.h>
+#include <LibWeb/CSS/Parser/ComponentValue.h>
 #include <LibWeb/CSS/Ratio.h>
 
 namespace Web::CSS {
@@ -50,6 +52,11 @@ public:
     {
     }
 
+    explicit MediaFeatureValue(Vector<Parser::ComponentValue> unknown_tokens)
+        : m_value(move(unknown_tokens))
+    {
+    }
+
     String to_string() const;
 
     bool is_ident() const { return m_value.has<Keyword>(); }
@@ -57,6 +64,7 @@ public:
     bool is_integer() const { return m_value.has<IntegerOrCalculated>(); }
     bool is_ratio() const { return m_value.has<Ratio>(); }
     bool is_resolution() const { return m_value.has<ResolutionOrCalculated>(); }
+    bool is_unknown() const { return m_value.has<Vector<Parser::ComponentValue>>(); }
     bool is_same_type(MediaFeatureValue const& other) const;
 
     Keyword const& ident() const
@@ -90,13 +98,13 @@ public:
     }
 
 private:
-    Variant<Keyword, LengthOrCalculated, Ratio, ResolutionOrCalculated, IntegerOrCalculated> m_value;
+    Variant<Keyword, LengthOrCalculated, Ratio, ResolutionOrCalculated, IntegerOrCalculated, Vector<Parser::ComponentValue>> m_value;
 };
 
 // https://www.w3.org/TR/mediaqueries-4/#mq-features
 class MediaFeature final : public BooleanExpression {
 public:
-    enum class Comparison {
+    enum class Comparison : u8 {
         Equal,
         LessThan,
         LessThanOrEqual,
@@ -124,13 +132,20 @@ public:
         return adopt_own(*new MediaFeature(Type::MaxValue, id, move(value)));
     }
 
-    // Corresponds to `<mf-range>` grammar, with a single comparison
     static NonnullOwnPtr<MediaFeature> half_range(MediaFeatureValue value, Comparison comparison, MediaFeatureID id)
     {
         return adopt_own(*new MediaFeature(Type::Range, id,
             Range {
                 .left_value = move(value),
                 .left_comparison = comparison,
+            }));
+    }
+    static NonnullOwnPtr<MediaFeature> half_range(MediaFeatureID id, Comparison comparison, MediaFeatureValue value)
+    {
+        return adopt_own(*new MediaFeature(Type::Range, id,
+            Range {
+                .right_comparison = comparison,
+                .right_value = move(value),
             }));
     }
 
@@ -151,7 +166,7 @@ public:
     virtual void dump(StringBuilder&, int indent_levels = 0) const override;
 
 private:
-    enum class Type {
+    enum class Type : u8 {
         IsTrue,
         ExactValue,
         MinValue,
@@ -160,8 +175,8 @@ private:
     };
 
     struct Range {
-        MediaFeatureValue left_value;
-        Comparison left_comparison;
+        Optional<MediaFeatureValue> left_value {};
+        Optional<Comparison> left_comparison {};
         Optional<Comparison> right_comparison {};
         Optional<MediaFeatureValue> right_value {};
     };
@@ -173,7 +188,7 @@ private:
     {
     }
 
-    static bool compare(HTML::Window const& window, MediaFeatureValue const& left, Comparison comparison, MediaFeatureValue const& right);
+    static MatchResult compare(HTML::Window const& window, MediaFeatureValue const& left, Comparison comparison, MediaFeatureValue const& right);
     MediaFeatureValue const& value() const { return m_value.get<MediaFeatureValue>(); }
     Range const& range() const { return m_value.get<Range>(); }
 
@@ -189,21 +204,14 @@ public:
     ~MediaQuery() = default;
 
     // https://www.w3.org/TR/mediaqueries-4/#media-types
-    enum class MediaType {
+    enum class KnownMediaType : u8 {
         All,
         Print,
         Screen,
-        Unknown,
-
-        // Deprecated, must never match:
-        TTY,
-        TV,
-        Projection,
-        Handheld,
-        Braille,
-        Embossed,
-        Aural,
-        Speech,
+    };
+    struct MediaType {
+        FlyString name;
+        Optional<KnownMediaType> known_type;
     };
 
     static NonnullRefPtr<MediaQuery> create_not_all();
@@ -218,7 +226,7 @@ private:
 
     // https://www.w3.org/TR/mediaqueries-4/#mq-not
     bool m_negated { false };
-    MediaType m_media_type { MediaType::All };
+    MediaType m_media_type { .name = "all"_fly_string, .known_type = KnownMediaType::All };
     OwnPtr<BooleanExpression> m_media_condition { nullptr };
 
     // Cached value, updated by evaluate()
@@ -227,8 +235,8 @@ private:
 
 String serialize_a_media_query_list(Vector<NonnullRefPtr<MediaQuery>> const&);
 
-MediaQuery::MediaType media_type_from_string(StringView);
-StringView to_string(MediaQuery::MediaType);
+Optional<MediaQuery::KnownMediaType> media_type_from_string(StringView);
+StringView to_string(MediaQuery::KnownMediaType);
 
 }
 

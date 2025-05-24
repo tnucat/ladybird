@@ -25,7 +25,14 @@ class SharedWorkerGlobalScope
 public:
     virtual ~SharedWorkerGlobalScope() override;
 
-    String const& name() const { return m_name; }
+    void set_constructor_origin(URL::Origin origin) { m_constructor_origin = move(origin); }
+    URL::Origin const& constructor_origin() const { return m_constructor_origin; }
+
+    void set_constructor_url(URL::URL url) { m_constructor_url = move(url); }
+    URL::URL const& constructor_url() const { return m_constructor_url; }
+
+    Fetch::Infrastructure::Request::CredentialsMode credentials() const { return m_credentials; }
+    void set_credentials(Fetch::Infrastructure::Request::CredentialsMode credentials) { m_credentials = credentials; }
 
     void close();
 
@@ -36,12 +43,14 @@ public:
 #undef __ENUMERATE
 
 private:
-    SharedWorkerGlobalScope(JS::Realm&, GC::Ref<Web::Page>, String name);
+    SharedWorkerGlobalScope(JS::Realm&, GC::Ref<Web::Page>);
 
     virtual void initialize_web_interfaces_impl() override;
     virtual void finalize() override;
 
-    String m_name;
+    URL::Origin m_constructor_origin;
+    URL::URL m_constructor_url;
+    Fetch::Infrastructure::Request::CredentialsMode m_credentials;
 };
 
 HashTable<GC::RawRef<SharedWorkerGlobalScope>>& all_shared_worker_global_scopes();

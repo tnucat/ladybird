@@ -46,8 +46,6 @@ struct DrawGlyphRun {
     Color color;
     Gfx::Orientation orientation { Gfx::Orientation::Horizontal };
 
-    [[nodiscard]] Gfx::IntRect bounding_rect() const { return rect; }
-
     void translate_by(Gfx::IntPoint const& offset);
 };
 
@@ -488,4 +486,5 @@ using Command = Variant<
     ApplyFilters,
     ApplyTransform,
     ApplyMaskBitmap>;
+
 }

@@ -13,6 +13,7 @@
 #include <LibJS/Forward.h>
 
 namespace Web {
+
 class DragAndDropEventHandler;
 class EventHandler;
 class InputEventsTarget;
@@ -28,17 +29,21 @@ enum class InvalidateDisplayList;
 enum class TraversalDecision;
 
 AK_TYPEDEF_DISTINCT_NUMERIC_GENERAL(i64, UniqueNodeID, Comparison, Increment, CastToUnderlying);
+
 }
 
 namespace Web::Painting {
+
 class BackingStore;
 class DisplayList;
 class DisplayListRecorder;
 class SVGGradientPaintStyle;
 using PaintStyle = RefPtr<SVGGradientPaintStyle>;
+
 }
 
 namespace Web::Animations {
+
 class Animatable;
 class Animation;
 class AnimationEffect;
@@ -46,16 +51,20 @@ class AnimationPlaybackEvent;
 class AnimationTimeline;
 class DocumentTimeline;
 class KeyframeEffect;
+
 }
 
 namespace Web::ARIA {
+
 class AriaData;
 class ARIAMixin;
 
 enum class StateAndProperties;
+
 }
 
 namespace Web::Bindings {
+
 class Intrinsics;
 class OptionConstructor;
 
@@ -87,43 +96,55 @@ enum class ResponseType : u8;
 enum class TextTrackKind : u8;
 enum class TransferFunction : u8;
 enum class XMLHttpRequestResponseType : u8;
+
 }
 
 namespace Web::Clipboard {
+
 class Clipboard;
 class ClipboardItem;
 
 struct SystemClipboardItem;
 struct SystemClipboardRepresentation;
+
 }
 
 namespace Web::Compression {
+
 class CompressionStream;
 class DecompressionStream;
+
 }
 
 namespace Web::ContentSecurityPolicy {
+
 class Policy;
 class PolicyList;
 class SecurityPolicyViolationEvent;
 class Violation;
 struct SecurityPolicyViolationEventInit;
 struct SerializedPolicy;
+
 }
 
 namespace Web::ContentSecurityPolicy::Directives {
+
 class Directive;
 struct SerializedDirective;
+
 }
 
 namespace Web::Cookie {
+
 struct Cookie;
 struct ParsedCookie;
 
 enum class Source;
+
 }
 
 namespace Web::CredentialManagement {
+
 class Credential;
 class CredentialsContainer;
 class FederatedCredential;
@@ -135,14 +156,18 @@ struct CredentialCreationOptions;
 struct FederatedCredentialRequestOptions;
 struct FederatedCredentialInit;
 struct PasswordCredentialData;
+
 }
 
 namespace Web::Crypto {
+
 class Crypto;
 class SubtleCrypto;
+
 }
 
 namespace Web::CSS {
+
 class AbstractImageStyleValue;
 class Angle;
 class AngleOrCalculated;
@@ -163,6 +188,7 @@ class CounterStyleValue;
 class CSSAnimation;
 class CSSColorValue;
 class CSSConditionRule;
+class CSSDescriptors;
 class CSSFontFaceDescriptors;
 class CSSFontFaceRule;
 class CSSGroupingRule;
@@ -174,11 +200,14 @@ class CSSKeyframesRule;
 class CSSKeywordValue;
 class CSSLayerBlockRule;
 class CSSLayerStatementRule;
+class CSSMarginRule;
 class CSSMediaRule;
 class CSSNamespaceRule;
 class CSSNestedDeclarations;
 class CSSOKLab;
 class CSSOKLCH;
+class CSSPageRule;
+class CSSPageDescriptors;
 class CSSPropertyRule;
 class CSSRGB;
 class CSSRule;
@@ -219,6 +248,7 @@ class GridTrackPlacement;
 class GridTrackPlacementStyleValue;
 class GridTrackSizeList;
 class GridTrackSizeListStyleValue;
+class GuaranteedInvalidStyleValue;
 class ImageStyleValue;
 class IntegerOrCalculated;
 class IntegerStyleValue;
@@ -239,6 +269,7 @@ class NumberOrCalculated;
 class NumberStyleValue;
 class OpenTypeTaggedStyleValue;
 class ParsedFontFace;
+class PendingSubstitutionStyleValue;
 class Percentage;
 class PercentageOrCalculated;
 class PercentageStyleValue;
@@ -278,16 +309,18 @@ class URL;
 class URLStyleValue;
 class VisualViewport;
 
-enum class Keyword;
-enum class MediaFeatureID;
-enum class PropertyID;
+enum class Keyword : u16;
+enum class MediaFeatureID : u8;
+enum class PropertyID : u16;
 
 struct BackgroundLayerData;
 struct CSSStyleSheetInit;
 struct StyleSheetIdentifier;
+
 }
 
 namespace Web::CSS::Parser {
+
 class ComponentValue;
 class Parser;
 class Token;
@@ -298,9 +331,11 @@ struct Declaration;
 struct Function;
 struct QualifiedRule;
 struct SimpleBlock;
+
 }
 
 namespace Web::DOM {
+
 class AbortController;
 class AbortSignal;
 class AbstractRange;
@@ -350,9 +385,11 @@ enum class QuirksMode;
 
 struct AddEventListenerOptions;
 struct EventListenerOptions;
+
 }
 
 namespace Web::Encoding {
+
 class TextDecoder;
 class TextEncoder;
 class TextEncoderStream;
@@ -360,30 +397,40 @@ class TextEncoderStream;
 struct TextDecodeOptions;
 struct TextDecoderOptions;
 struct TextEncoderEncodeIntoResult;
+
 }
 
 namespace Web::EntriesAPI {
+
 class FileSystemEntry;
+
 }
 
 namespace Web::EventTiming {
+
 class PerformanceEventTiming;
+
 }
 
 namespace Web::Fetch {
+
 class BodyMixin;
 class Headers;
 class HeadersIterator;
 class Request;
 class Response;
+
 }
 
 namespace Web::Fetch::Fetching {
+
 class PendingResponse;
 class RefCountedFlag;
+
 }
 
 namespace Web::Fetch::Infrastructure {
+
 class Body;
 class FetchAlgorithms;
 class FetchController;
@@ -398,15 +445,19 @@ class Response;
 struct BodyWithType;
 struct ConnectionTimingInfo;
 struct Header;
+
 }
 
 namespace Web::FileAPI {
+
 class Blob;
 class File;
 class FileList;
+
 }
 
 namespace Web::Geometry {
+
 class DOMMatrix;
 class DOMMatrixReadOnly;
 class DOMPoint;
@@ -419,9 +470,11 @@ class DOMRectReadOnly;
 struct DOMMatrix2DInit;
 struct DOMMatrixInit;
 struct DOMPointInit;
+
 }
 
 namespace Web::HTML {
+
 class AnimationFrameCallbackDriver;
 class AudioTrack;
 class AudioTrackList;
@@ -614,15 +667,20 @@ struct StructuredSerializeOptions;
 struct SyntheticRealmSettings;
 struct ToggleTaskTracker;
 struct TransferDataHolder;
+
 }
 
 namespace Web::HighResolutionTime {
+
 class Performance;
+
 }
 
 namespace Web::IndexedDB {
+
 class Database;
 class IDBCursor;
+class IDBCursorWithValue;
 class IDBDatabase;
 class IDBFactory;
 class IDBIndex;
@@ -635,21 +693,27 @@ class IDBVersionChangeEvent;
 class Index;
 class ObjectStore;
 class RequestList;
+
 }
 
 namespace Web::Internals {
+
 class Internals;
 class WebUI;
+
 }
 
 namespace Web::IntersectionObserver {
+
 class IntersectionObserver;
 class IntersectionObserverEntry;
 
 struct IntersectionObserverRegistration;
+
 }
 
 namespace Web::Layout {
+
 class AudioBox;
 class BlockContainer;
 class BlockFormattingContext;
@@ -683,13 +747,17 @@ class Viewport;
 enum class LayoutMode;
 
 struct LayoutState;
+
 }
 
 namespace Web::MathML {
+
 class MathMLElement;
+
 }
 
 namespace Web::MediaCapabilitiesAPI {
+
 class MediaCapabilities;
 
 struct AudioConfiguration;
@@ -702,9 +770,11 @@ struct MediaConfiguration;
 struct MediaDecodingConfiguration;
 struct MediaEncodingConfiguration;
 struct VideoConfiguration;
+
 }
 
 namespace Web::MediaSourceExtensions {
+
 class BufferedChangeEvent;
 class ManagedMediaSource;
 class ManagedSourceBuffer;
@@ -712,18 +782,24 @@ class MediaSource;
 class MediaSourceHandle;
 class SourceBuffer;
 class SourceBufferList;
+
 }
 
 namespace Web::MimeSniff {
+
 class MimeType;
+
 }
 
 namespace Web::NavigationTiming {
+
 class PerformanceNavigation;
 class PerformanceTiming;
+
 }
 
 namespace Web::Painting {
+
 class AudioPaintable;
 class ButtonPaintable;
 class CheckBoxPaintable;
@@ -743,52 +819,72 @@ enum class PaintPhase;
 struct BorderRadiiData;
 struct BorderRadiusData;
 struct LinearGradientData;
+
 }
 
 namespace Web::PerformanceTimeline {
+
 class PerformanceEntry;
 class PerformanceObserver;
 class PerformanceObserverEntryList;
 
 struct PerformanceObserverInit;
+
 }
 
 namespace Web::PermissionsPolicy {
+
 class AutoplayAllowlist;
+
 }
 
 namespace Web::Platform {
+
 class AudioCodecPlugin;
 class Timer;
+
 }
 
 namespace Web::ReferrerPolicy {
+
 enum class ReferrerPolicy;
+
 }
 
 namespace Web::RequestIdleCallback {
+
 class IdleDeadline;
+
 }
 
 namespace Web::ResizeObserver {
+
 class ResizeObserver;
+
 }
 
 namespace Web::ResourceTiming {
+
 class PerformanceResourceTiming;
+
 }
 
 namespace Web::Selection {
+
 class Selection;
+
 }
 
 namespace Web::ServiceWorker {
+
 class ServiceWorker;
 class ServiceWorkerContainer;
 class ServiceWorkerRegistration;
+
 }
 
 namespace Web::Streams {
+
 class ByteLengthQueuingStrategy;
 class CountQueuingStrategy;
 class ReadableByteStreamController;
@@ -814,9 +910,11 @@ struct ReadableStreamGetReaderOptions;
 struct Transformer;
 struct UnderlyingSink;
 struct UnderlyingSource;
+
 }
 
 namespace Web::StorageAPI {
+
 class NavigatorStorage;
 class StorageManager;
 class StorageShed;
@@ -825,9 +923,11 @@ struct StorageBottle;
 struct StorageBucket;
 struct StorageEndpoint;
 struct StorageShelf;
+
 }
 
 namespace Web::SVG {
+
 class SVGAnimatedEnumeration;
 class SVGAnimatedLength;
 class SVGAnimatedRect;
@@ -853,9 +953,11 @@ class SVGRectElement;
 class SVGScriptElement;
 class SVGSVGElement;
 class SVGTitleElement;
+
 }
 
 namespace Web::UIEvents {
+
 class CompositionEvent;
 class InputEvent;
 class KeyboardEvent;
@@ -863,32 +965,42 @@ class MouseEvent;
 class PointerEvent;
 class TextEvent;
 class UIEvent;
+
 }
 
 namespace Web::URLPattern {
+
 class URLPattern;
+
 }
 
 namespace Web::DOMURL {
+
 class DOMURL;
 class URLSearchParams;
 class URLSearchParamsIterator;
+
 }
 
 namespace Web::UserTiming {
+
 class PerformanceMark;
 class PerformanceMeasure;
+
 }
 
 namespace Web::WebAssembly {
+
 class Global;
 class Instance;
 class Memory;
 class Module;
 class Table;
+
 }
 
 namespace Web::WebAudio {
+
 class AudioBuffer;
 class AudioBufferSourceNode;
 class AudioContext;
@@ -911,9 +1023,11 @@ enum class AudioContextState;
 struct AudioContextOptions;
 struct DynamicsCompressorOptions;
 struct OscillatorOptions;
+
 }
 
 namespace Web::WebGL {
+
 class OpenGLContext;
 class WebGL2RenderingContext;
 class WebGLActiveInfo;
@@ -931,9 +1045,11 @@ class WebGLSync;
 class WebGLTexture;
 class WebGLUniformLocation;
 class WebGLVertexArrayObject;
+
 }
 
 namespace Web::WebGL::Extensions {
+
 class ANGLEInstancedArrays;
 class EXTBlendMinMax;
 class EXTColorBufferFloat;
@@ -941,9 +1057,11 @@ class OESVertexArrayObject;
 class WebGLCompressedTextureS3tc;
 class WebGLDrawBuffers;
 class WebGLVertexArrayObjectOES;
+
 }
 
 namespace Web::WebIDL {
+
 class ArrayBufferView;
 class BufferSource;
 class CallbackType;
@@ -953,25 +1071,33 @@ template<typename ValueType>
 class ExceptionOr;
 
 using Promise = JS::PromiseCapability;
+
 }
 
 namespace Web::WebDriver {
+
 class HeapTimer;
 
 struct ActionObject;
 struct InputState;
+
 };
 
 namespace Web::WebSockets {
+
 class WebSocket;
+
 }
 
 namespace Web::WebVTT {
+
 class VTTCue;
 class VTTRegion;
+
 }
 
 namespace Web::XHR {
+
 class FormData;
 class FormDataIterator;
 class ProgressEvent;
@@ -980,6 +1106,7 @@ class XMLHttpRequestEventTarget;
 class XMLHttpRequestUpload;
 
 struct FormDataEntry;
+
 }
 
 namespace IPC {

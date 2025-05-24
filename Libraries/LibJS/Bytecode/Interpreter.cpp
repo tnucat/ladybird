@@ -51,6 +51,7 @@ struct PropertyKeyAndEnumerableFlag {
 }
 
 namespace AK {
+
 template<>
 struct Traits<JS::PropertyKeyAndEnumerableFlag> : public DefaultTraits<JS::PropertyKeyAndEnumerableFlag> {
     static unsigned hash(JS::PropertyKeyAndEnumerableFlag const& entry)
@@ -63,6 +64,7 @@ struct Traits<JS::PropertyKeyAndEnumerableFlag> : public DefaultTraits<JS::Prope
         return Traits<JS::PropertyKey>::equals(a.key, b.key);
     }
 };
+
 }
 
 namespace JS::Bytecode {
@@ -142,40 +144,40 @@ static ByteString format_value_list(StringView name, ReadonlySpan<Value> values)
     return builder.to_byte_string();
 }
 
-ALWAYS_INLINE static ThrowCompletionOr<Value> loosely_inequals(VM& vm, Value src1, Value src2)
+ALWAYS_INLINE static ThrowCompletionOr<bool> loosely_inequals(VM& vm, Value src1, Value src2)
 {
     if (src1.tag() == src2.tag()) {
         if (src1.is_int32() || src1.is_object() || src1.is_boolean() || src1.is_nullish())
-            return Value(src1.encoded() != src2.encoded());
+            return src1.encoded() != src2.encoded();
     }
-    return Value(!TRY(is_loosely_equal(vm, src1, src2)));
+    return !TRY(is_loosely_equal(vm, src1, src2));
 }
 
-ALWAYS_INLINE static ThrowCompletionOr<Value> loosely_equals(VM& vm, Value src1, Value src2)
+ALWAYS_INLINE static ThrowCompletionOr<bool> loosely_equals(VM& vm, Value src1, Value src2)
 {
     if (src1.tag() == src2.tag()) {
         if (src1.is_int32() || src1.is_object() || src1.is_boolean() || src1.is_nullish())
-            return Value(src1.encoded() == src2.encoded());
+            return src1.encoded() == src2.encoded();
     }
-    return Value(TRY(is_loosely_equal(vm, src1, src2)));
+    return TRY(is_loosely_equal(vm, src1, src2));
 }
 
-ALWAYS_INLINE static ThrowCompletionOr<Value> strict_inequals(VM&, Value src1, Value src2)
+ALWAYS_INLINE static ThrowCompletionOr<bool> strict_inequals(VM&, Value src1, Value src2)
 {
     if (src1.tag() == src2.tag()) {
         if (src1.is_int32() || src1.is_object() || src1.is_boolean() || src1.is_nullish())
-            return Value(src1.encoded() != src2.encoded());
+            return src1.encoded() != src2.encoded();
     }
-    return Value(!is_strictly_equal(src1, src2));
+    return !is_strictly_equal(src1, src2);
 }
 
-ALWAYS_INLINE static ThrowCompletionOr<Value> strict_equals(VM&, Value src1, Value src2)
+ALWAYS_INLINE static ThrowCompletionOr<bool> strict_equals(VM&, Value src1, Value src2)
 {
     if (src1.tag() == src2.tag()) {
         if (src1.is_int32() || src1.is_object() || src1.is_boolean() || src1.is_nullish())
-            return Value(src1.encoded() == src2.encoded());
+            return src1.encoded() == src2.encoded();
     }
-    return Value(is_strictly_equal(src1, src2));
+    return is_strictly_equal(src1, src2);
 }
 
 Interpreter::Interpreter(VM& vm)
@@ -302,14 +304,6 @@ ThrowCompletionOr<Value> Interpreter::run(Script& script_record, GC::Ptr<Environ
     VERIFY(!vm.execution_context_stack().is_empty());
 
     // FIXME: 16. Resume the context that is now on the top of the execution context stack as the running execution context.
-
-    // FIXME: These three should be moved out of Interpreter::run and give the host an option to run these, as it's up to the host when these get run.
-    //        https://tc39.es/ecma262/#sec-jobs for jobs and https://tc39.es/ecma262/#_ref_3508 for ClearKeptObjects
-    //        finish_execution_generation is particularly an issue for LibWeb, as the HTML spec wants to run it specifically after performing a microtask checkpoint.
-    //        The promise and registry cleanup queues don't cause LibWeb an issue, as LibWeb overrides the hooks that push onto these queues.
-    vm.run_queued_promise_jobs();
-
-    vm.run_queued_finalization_registry_cleanup_jobs();
 
     vm.finish_execution_generation();
 
@@ -486,7 +480,7 @@ FLATTEN_ON_CLANG void Interpreter::run_bytecode(size_t entry_point)
                 return;                                                                                                 \
             goto start;                                                                                                 \
         }                                                                                                               \
-        if (result.value().to_boolean())                                                                                \
+        if (result.value())                                                                                             \
             program_counter = instruction.true_target().address();                                                      \
         else                                                                                                            \
             program_counter = instruction.false_target().address();                                                     \
@@ -1028,23 +1022,28 @@ inline ThrowCompletionOr<Value> get_by_id(VM& vm, Optional<IdentifierTableIndex>
     CacheablePropertyMetadata cacheable_metadata;
     auto value = TRY(base_obj->internal_get(executable.get_identifier(property), this_value, &cacheable_metadata));
 
-    auto get_cache_slot = [&] -> PropertyLookupCache::Entry& {
-        for (size_t i = cache.entries.size() - 1; i >= 1; --i) {
-            cache.entries[i] = cache.entries[i - 1];
+    // If internal_get() caused object's shape change, we can no longer be sure
+    // that collected metadata is valid, e.g. if getter in prototype chain added
+    // property with the same name into the object itself.
+    if (&shape == &base_obj->shape()) {
+        auto get_cache_slot = [&] -> PropertyLookupCache::Entry& {
+            for (size_t i = cache.entries.size() - 1; i >= 1; --i) {
+                cache.entries[i] = cache.entries[i - 1];
+            }
+            cache.entries[0] = {};
+            return cache.entries[0];
+        };
+        if (cacheable_metadata.type == CacheablePropertyMetadata::Type::OwnProperty) {
+            auto& entry = get_cache_slot();
+            entry.shape = shape;
+            entry.property_offset = cacheable_metadata.property_offset.value();
+        } else if (cacheable_metadata.type == CacheablePropertyMetadata::Type::InPrototypeChain) {
+            auto& entry = get_cache_slot();
+            entry.shape = &base_obj->shape();
+            entry.property_offset = cacheable_metadata.property_offset.value();
+            entry.prototype = *cacheable_metadata.prototype;
+            entry.prototype_chain_validity = *cacheable_metadata.prototype->shape().prototype_chain_validity();
         }
-        cache.entries[0] = {};
-        return cache.entries[0];
-    };
-    if (cacheable_metadata.type == CacheablePropertyMetadata::Type::OwnProperty) {
-        auto& entry = get_cache_slot();
-        entry.shape = shape;
-        entry.property_offset = cacheable_metadata.property_offset.value();
-    } else if (cacheable_metadata.type == CacheablePropertyMetadata::Type::InPrototypeChain) {
-        auto& entry = get_cache_slot();
-        entry.shape = &base_obj->shape();
-        entry.property_offset = cacheable_metadata.property_offset.value();
-        entry.prototype = *cacheable_metadata.prototype;
-        entry.prototype_chain_validity = *cacheable_metadata.prototype->shape().prototype_chain_validity();
     }
 
     return value;
@@ -1233,6 +1232,7 @@ inline ThrowCompletionOr<void> put_by_property_key(VM& vm, Value base, Value thi
         break;
     }
     case Op::PropertyKind::KeyValue: {
+        auto& shape = object->shape();
         if (caches) {
             for (auto& cache : caches->entries) {
                 if (cache.prototype) {
@@ -1268,7 +1268,10 @@ inline ThrowCompletionOr<void> put_by_property_key(VM& vm, Value base, Value thi
         CacheablePropertyMetadata cacheable_metadata;
         bool succeeded = TRY(object->internal_set(name, value, this_value, &cacheable_metadata));
 
-        if (succeeded && caches) {
+        // If internal_set() caused object's shape change, we can no longer be sure
+        // that collected metadata is valid, e.g. if setter in prototype chain added
+        // property with the same name into the object itself.
+        if (succeeded && caches && &shape == &object->shape()) {
             auto get_cache_slot = [&] -> PropertyLookupCache::Entry& {
                 for (size_t i = caches->entries.size() - 1; i >= 1; --i) {
                     caches->entries[i] = caches->entries[i - 1];
@@ -1436,6 +1439,24 @@ inline ThrowCompletionOr<void> put_by_value(VM& vm, Value base, Optional<FlyStri
                         return {};
                     case TypedArrayBase::Kind::Float64Array:
                         fast_typed_array_set_element<double>(typed_array, index, value.as_double());
+                        return {};
+                    case TypedArrayBase::Kind::Int8Array:
+                        fast_typed_array_set_element<i8>(typed_array, index, MUST(value.to_i8(vm)));
+                        return {};
+                    case TypedArrayBase::Kind::Int16Array:
+                        fast_typed_array_set_element<i16>(typed_array, index, MUST(value.to_i16(vm)));
+                        return {};
+                    case TypedArrayBase::Kind::Int32Array:
+                        fast_typed_array_set_element<i32>(typed_array, index, MUST(value.to_i32(vm)));
+                        return {};
+                    case TypedArrayBase::Kind::Uint8Array:
+                        fast_typed_array_set_element<u8>(typed_array, index, MUST(value.to_u8(vm)));
+                        return {};
+                    case TypedArrayBase::Kind::Uint16Array:
+                        fast_typed_array_set_element<u16>(typed_array, index, MUST(value.to_u16(vm)));
+                        return {};
+                    case TypedArrayBase::Kind::Uint32Array:
+                        fast_typed_array_set_element<u32>(typed_array, index, MUST(value.to_u32(vm)));
                         return {};
                     default:
                         break;
@@ -1777,7 +1798,7 @@ class PropertyNameIterator final
 public:
     virtual ~PropertyNameIterator() override = default;
 
-    BuiltinIterator* as_builtin_iterator() override { return this; }
+    BuiltinIterator* as_builtin_iterator_if_next_is_not_redefined() override { return this; }
     ThrowCompletionOr<void> next(VM&, bool& done, Value& value) override
     {
         while (true) {
@@ -1909,7 +1930,7 @@ static void dump_object(Object& o, HashTable<Object const*>& seen, int indent = 
     seen.set(&o);
     for (auto& it : o.shape().property_table()) {
         auto value = o.get_direct(it.value.offset);
-        dbgln("{}  {} -> {}", String::repeated(' ', indent).release_value(), it.key.to_display_string(), value);
+        dbgln("{}  {} -> {}", String::repeated(' ', indent).release_value(), it.key.to_string(), value);
         if (value.is_object()) {
             dump_object(value.as_object(), seen, indent + 2);
         }
@@ -1932,7 +1953,7 @@ void Dump::execute_impl(Bytecode::Interpreter& interpreter) const
         auto& vm = interpreter.vm();                                                            \
         auto lhs = interpreter.get(m_lhs);                                                      \
         auto rhs = interpreter.get(m_rhs);                                                      \
-        interpreter.set(m_dst, TRY(op_snake_case(vm, lhs, rhs)));                               \
+        interpreter.set(m_dst, Value { TRY(op_snake_case(vm, lhs, rhs)) });                     \
         return {};                                                                              \
     }
 
@@ -2106,7 +2127,7 @@ ThrowCompletionOr<void> LessThan::execute_impl(Bytecode::Interpreter& interprete
         interpreter.set(m_dst, Value(lhs.as_double() < rhs.as_double()));
         return {};
     }
-    interpreter.set(m_dst, TRY(less_than(vm, lhs, rhs)));
+    interpreter.set(m_dst, Value { TRY(less_than(vm, lhs, rhs)) });
     return {};
 }
 
@@ -2123,7 +2144,7 @@ ThrowCompletionOr<void> LessThanEquals::execute_impl(Bytecode::Interpreter& inte
         interpreter.set(m_dst, Value(lhs.as_double() <= rhs.as_double()));
         return {};
     }
-    interpreter.set(m_dst, TRY(less_than_equals(vm, lhs, rhs)));
+    interpreter.set(m_dst, Value { TRY(less_than_equals(vm, lhs, rhs)) });
     return {};
 }
 
@@ -2140,7 +2161,7 @@ ThrowCompletionOr<void> GreaterThan::execute_impl(Bytecode::Interpreter& interpr
         interpreter.set(m_dst, Value(lhs.as_double() > rhs.as_double()));
         return {};
     }
-    interpreter.set(m_dst, TRY(greater_than(vm, lhs, rhs)));
+    interpreter.set(m_dst, Value { TRY(greater_than(vm, lhs, rhs)) });
     return {};
 }
 
@@ -2157,7 +2178,7 @@ ThrowCompletionOr<void> GreaterThanEquals::execute_impl(Bytecode::Interpreter& i
         interpreter.set(m_dst, Value(lhs.as_double() >= rhs.as_double()));
         return {};
     }
-    interpreter.set(m_dst, TRY(greater_than_equals(vm, lhs, rhs)));
+    interpreter.set(m_dst, Value { TRY(greater_than_equals(vm, lhs, rhs)) });
     return {};
 }
 
@@ -2904,10 +2925,7 @@ void NewFunction::execute_impl(Bytecode::Interpreter& interpreter) const
 
 void Return::execute_impl(Bytecode::Interpreter& interpreter) const
 {
-    if (m_value.has_value())
-        interpreter.do_return(interpreter.get(*m_value));
-    else
-        interpreter.do_return(js_undefined());
+    interpreter.do_return(interpreter.get(m_value));
 }
 
 ThrowCompletionOr<void> Increment::execute_impl(Bytecode::Interpreter& interpreter) const
@@ -3180,20 +3198,14 @@ ThrowCompletionOr<void> IteratorNextUnpack::execute_impl(Bytecode::Interpreter& 
 {
     auto& vm = interpreter.vm();
     auto& iterator_record = static_cast<IteratorRecord&>(interpreter.get(m_iterator_record).as_cell());
-
-    Value value;
-    bool done = false;
-    if (auto* builtin_iterator = iterator_record.iterator->as_builtin_iterator()) {
-        TRY(builtin_iterator->next(vm, done, value));
-    } else {
-        auto result = TRY(iterator_next(vm, iterator_record));
-        value = TRY(result->internal_get(vm.names.value, {}));
-        done = TRY(result->internal_get(vm.names.done, {})).to_boolean();
+    auto iteration_result_or_done = TRY(iterator_step(vm, iterator_record));
+    if (iteration_result_or_done.has<IterationDone>()) {
+        interpreter.set(dst_done(), Value(true));
+        return {};
     }
-
-    interpreter.set(dst_done(), Value(done));
-    interpreter.set(dst_value(), value);
-
+    auto& iteration_result = iteration_result_or_done.get<IterationResult>();
+    interpreter.set(dst_done(), TRY(iteration_result.done));
+    interpreter.set(dst_value(), TRY(iteration_result.value));
     return {};
 }
 
@@ -3766,9 +3778,7 @@ ByteString NewClass::to_byte_string_impl(Bytecode::Executable const& executable)
 
 ByteString Return::to_byte_string_impl(Bytecode::Executable const& executable) const
 {
-    if (m_value.has_value())
-        return ByteString::formatted("Return {}", format_operand("value"sv, m_value.value(), executable));
-    return "Return";
+    return ByteString::formatted("Return {}", format_operand("value"sv, m_value, executable));
 }
 
 ByteString Increment::to_byte_string_impl(Bytecode::Executable const& executable) const

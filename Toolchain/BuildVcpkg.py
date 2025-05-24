@@ -4,10 +4,9 @@ import json
 import os
 import pathlib
 import subprocess
-import sys
 
 
-def main() -> int:
+def build_vcpkg():
     script_dir = pathlib.Path(__file__).parent.resolve()
 
     with open(script_dir.parent / "vcpkg.json", "r") as vcpkg_json_file:
@@ -23,22 +22,25 @@ def main() -> int:
     if not vcpkg_checkout.is_dir():
         subprocess.check_call(args=["git", "clone", git_repo], cwd=build_dir)
     else:
-        bootstrapped_vcpkg_version = subprocess.check_output(
-            ["git", "-C", vcpkg_checkout, "rev-parse", "HEAD"]).strip().decode()
+        bootstrapped_vcpkg_version = (
+            subprocess.check_output(["git", "-C", vcpkg_checkout, "rev-parse", "HEAD"]).strip().decode()
+        )
 
         if bootstrapped_vcpkg_version == git_rev:
-            return 0
+            return
 
     print(f"Building vcpkg@{git_rev}")
 
     subprocess.check_call(args=["git", "fetch", "origin"], cwd=vcpkg_checkout)
     subprocess.check_call(args=["git", "checkout", git_rev], cwd=vcpkg_checkout)
 
-    bootstrap_script = "bootstrap-vcpkg.bat" if os.name == 'nt' else "bootstrap-vcpkg.sh"
+    bootstrap_script = "bootstrap-vcpkg.bat" if os.name == "nt" else "bootstrap-vcpkg.sh"
     subprocess.check_call(args=[vcpkg_checkout / bootstrap_script, "-disableMetrics"], cwd=vcpkg_checkout)
 
-    return 0
+
+def main():
+    build_vcpkg()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
